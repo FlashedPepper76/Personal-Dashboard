@@ -1,5 +1,6 @@
 // GET /api/google-auth-start
 // Redirects to Google's consent screen asking for read-only Gmail + Drive access.
+// (redeploy trigger — picks up latest GOOGLE_CLIENT_ID/SECRET from Vercel env vars)
 module.exports = async (req, res) => {
   // Fail loudly here instead of building a broken auth URL — a missing/blank
   // env var silently becomes "client_id=undefined" in the redirect to Google,
