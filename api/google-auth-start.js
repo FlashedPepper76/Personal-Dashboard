@@ -36,7 +36,8 @@ module.exports = async (req, res) => {
   );
 
   res.writeHead(302, {
-    Location: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+    Location: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+    "Cache-Control": "no-store"
   });
   res.end();
 };
