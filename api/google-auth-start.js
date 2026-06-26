@@ -1,6 +1,20 @@
 // GET /api/google-auth-start
 // Redirects to Google's consent screen asking for read-only Gmail + Drive access.
 module.exports = async (req, res) => {
+  // Fail loudly here instead of building a broken auth URL — a missing/blank
+  // env var silently becomes "client_id=undefined" in the redirect to Google,
+  // which Google reports back as the very unhelpful "Error 401: invalid_client".
+  const missing = ["GOOGLE_CLIENT_ID", "GOOGLE_REDIRECT_URI"].filter(
+    (key) => !process.env[key]
+  );
+  if (missing.length) {
+    res.status(500).send(
+      `Server is missing env var(s): ${missing.join(", ")}. ` +
+      `Set them in Vercel → Project → Settings → Environment Variables (Production), then redeploy.`
+    );
+    return;
+  }
+
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: process.env.GOOGLE_REDIRECT_URI,
@@ -12,6 +26,10 @@ module.exports = async (req, res) => {
       "https://www.googleapis.com/auth/drive.metadata.readonly"
     ].join(" ")
   });
+
+  console.log(
+    `google-auth-start: redirect_uri=${process.env.GOOGLE_REDIRECT_URI} client_id_suffix=...${process.env.GOOGLE_CLIENT_ID.slice(-12)}`
+  );
 
   res.writeHead(302, {
     Location: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
