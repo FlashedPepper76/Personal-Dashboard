@@ -1,6 +1,6 @@
 // GET /api/google-auth-start
 // Redirects to Google's consent screen asking for read-only Gmail + Drive access.
-exports.handler = async () => {
+module.exports = async (req, res) => {
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: process.env.GOOGLE_REDIRECT_URI,
@@ -13,10 +13,8 @@ exports.handler = async () => {
     ].join(" ")
   });
 
-  return {
-    statusCode: 302,
-    headers: {
-      Location: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
-    }
-  };
+  res.writeHead(302, {
+    Location: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+  });
+  res.end();
 };

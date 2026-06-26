@@ -3,10 +3,11 @@
 // This is the ONLY place the refresh token gets written — the frontend never sees it.
 const { createClient } = require('@supabase/supabase-js');
 
-exports.handler = async (event) => {
-  const code = event.queryStringParameters && event.queryStringParameters.code;
+module.exports = async (req, res) => {
+  const code = req.query.code;
   if (!code) {
-    return { statusCode: 400, body: "Missing ?code from Google redirect." };
+    res.status(400).send("Missing ?code from Google redirect.");
+    return;
   }
 
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -23,7 +24,8 @@ exports.handler = async (event) => {
 
   const tokens = await tokenRes.json();
   if (!tokens.access_token) {
-    return { statusCode: 400, body: `Google token exchange failed: ${JSON.stringify(tokens)}` };
+    res.status(400).send(`Google token exchange failed: ${JSON.stringify(tokens)}`);
+    return;
   }
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -41,14 +43,12 @@ exports.handler = async (event) => {
     .upsert(row, { onConflict: 'provider' });
 
   if (error) {
-    return { statusCode: 500, body: `Saved tokens failed: ${error.message}` };
+    res.status(500).send(`Saving tokens failed: ${error.message}`);
+    return;
   }
 
-  return {
-    statusCode: 200,
-    headers: { "Content-Type": "text/html" },
-    body: `<html><body style="background:#020203;color:#f0f2f6;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-      <p>Google connected — Gmail &amp; Drive access saved. You can close this tab.</p>
-    </body></html>`
-  };
+  res.setHeader('Content-Type', 'text/html');
+  res.status(200).send(`<html><body style="background:#020203;color:#f0f2f6;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+    <p>Google connected — Gmail &amp; Drive access saved. You can close this tab.</p>
+  </body></html>`);
 };

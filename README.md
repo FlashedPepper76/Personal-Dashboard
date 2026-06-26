@@ -1,7 +1,7 @@
 # life-dashboard — setup
 
 Database is already provisioned (Supabase project `life-dashboard`, tables created, RLS on).
-What's left is two account setups only you can do, then deploying to Netlify.
+What's left is two account setups only you can do, then deploying to Vercel.
 
 ## 1. Google Cloud OAuth client (for Gmail + Drive)
 
@@ -14,8 +14,8 @@ What's left is two account setups only you can do, then deploying to Netlify.
    - Add yourself as a **test user** (your Gmail address) — this keeps the app in "testing" mode, which is fine for a personal-use app and avoids Google's verification process.
 5. Go to **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
    - Application type: **Web application**
-   - Authorized redirect URI: `https://YOUR-SITE-NAME.netlify.app/api/google-auth-callback` (swap in your real Netlify site name once it exists — you can edit this later)
-6. Copy the **Client ID** and **Client Secret** into your `.env` / Netlify env vars.
+   - Authorized redirect URI: `https://YOUR-PROJECT-NAME.vercel.app/api/google-auth-callback` (swap in your real Vercel project URL once it exists — you can edit this later)
+6. Copy the **Client ID** and **Client Secret** into your `.env` / Vercel env vars.
 
 ## 2. Apple app-specific password (for iCloud Calendar)
 
@@ -27,10 +27,12 @@ This password only grants CalDAV-style access, not full account access — and y
 
 ## 3. Deploy
 
-1. Push this folder to a new GitHub repo (same flow as `eye-auth-helper`).
-2. In Netlify: **Add new site → Import from Git**, pick the repo.
-3. Add all the env vars from `.env.example` (filled in) under **Site settings → Environment variables**.
-4. Once deployed, visit `https://YOUR-SITE.netlify.app/api/google-auth-start` once — that's the link that connects your Gmail + Drive.
+1. On vercel.com: **Add New → Project → Import** the `Personal-Dashboard` GitHub repo.
+2. Framework preset: leave as **Other** — no build step needed, Vercel auto-detects `index.html` at the root and turns everything in `/api` into serverless functions.
+3. Before the first deploy (or right after, then redeploy), add all the env vars from `.env.example` (filled in) under **Project Settings → Environment Variables**.
+4. Deploy. Note your project's URL — e.g. `https://personal-dashboard-xyz.vercel.app`.
+5. Go back to **Google Cloud Console → Credentials → your OAuth client** and add `https://YOUR-PROJECT.vercel.app/api/google-auth-callback` under Authorized redirect URIs (must match `GOOGLE_REDIRECT_URI` exactly).
+6. Visit `https://YOUR-PROJECT.vercel.app/api/google-auth-start` once — that's the link that connects your Gmail + Drive.
 
 ## What's already done vs. what's next
 

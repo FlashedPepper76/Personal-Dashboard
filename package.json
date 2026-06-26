@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "netlify dev"
+    "dev": "vercel dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -12,6 +12,6 @@
     "@anthropic-ai/sdk": "^0.27.0"
   },
   "devDependencies": {
-    "netlify-cli": "^17.0.0"
+    "vercel": "^37.0.0"
   }
 }
