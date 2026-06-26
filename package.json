@@ -3,15 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "npx vercel dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "googleapis": "^140.0.0",
     "tsdav": "^2.0.6",
     "@anthropic-ai/sdk": "^0.27.0"
-  },
-  "devDependencies": {
-    "vercel": "^37.0.0"
   }
 }
