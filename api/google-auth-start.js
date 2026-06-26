@@ -27,8 +27,12 @@ module.exports = async (req, res) => {
     ].join(" ")
   });
 
+  const rawClientId = process.env.GOOGLE_CLIENT_ID;
+  const hasStrayChars = /^\s|\s$|["']/.test(rawClientId);
   console.log(
-    `google-auth-start: redirect_uri=${process.env.GOOGLE_REDIRECT_URI} client_id_suffix=...${process.env.GOOGLE_CLIENT_ID.slice(-12)}`
+    `google-auth-start: redirect_uri="${process.env.GOOGLE_REDIRECT_URI}" ` +
+    `client_id="${rawClientId}" length=${rawClientId.length} ` +
+    `hasStrayWhitespaceOrQuotes=${hasStrayChars}`
   );
 
   res.writeHead(302, {
