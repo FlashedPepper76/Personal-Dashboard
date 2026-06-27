@@ -2,10 +2,10 @@
 // Run daily by Vercel Cron (see vercel.json). Also safe to call manually.
 // Gathers recent important emails (full bodies) + Drive doc content (if the
 // connected token has drive.readonly — gracefully skipped otherwise), asks
-// Claude to extract concrete action items, and inserts new ones as 'auto'
+// Gemini to extract concrete action items, and inserts new ones as 'auto'
 // todos. Skips anything that duplicates an already-open todo.
 const { google } = require('googleapis');
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenAI } = require('@google/genai');
 const { getAuthorizedClient } = require('./_googleSync');
 
 function getHeader(headers, name) {
@@ -40,8 +40,8 @@ module.exports = async (req, res) => {
     }
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    res.status(500).json({ error: 'ANTHROPIC_API_KEY is not set in Vercel env vars.' });
+  if (!process.env.GEMINI_API_KEY) {
+    res.status(500).json({ error: 'GEMINI_API_KEY is not set in Vercel env vars.' });
     return;
   }
 
@@ -94,8 +94,8 @@ module.exports = async (req, res) => {
       }
     }
 
-    // ---------- Ask Claude to extract action items ----------
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // ---------- Ask Gemini to extract action items ----------
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const prompt = `You are scanning Carter's recent important emails${docContext.length ? ' and Google Docs' : ''} to suggest concrete to-do items for his personal dashboard.
 
 EMAILS:
@@ -110,21 +110,24 @@ Respond with ONLY a JSON array (no prose, no markdown fences), each item shaped 
 
 If there's nothing actionable, respond with: []`;
 
-    const aiResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: prompt }]
-    }).catch((aiErr) => {
-      console.error('[extract-todos] Anthropic call failed:', aiErr.status, aiErr.message);
-      throw new Error(`Claude call failed: ${aiErr.message}`);
-    });
+    let aiResponse;
+    try {
+      aiResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' }
+      });
+    } catch (aiErr) {
+      console.error('[extract-todos] Gemini call failed:', aiErr.status, aiErr.message);
+      throw new Error(`Gemini call failed: ${aiErr.message}`);
+    }
 
-    const rawText = aiResponse.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const rawText = aiResponse.text || '';
     let suggestions = [];
     try {
       suggestions = JSON.parse(rawText.trim().replace(/^```json\s*|```$/g, ''));
     } catch (err) {
-      res.status(500).json({ error: `Could not parse Claude's response: ${err.message}`, raw: rawText });
+      res.status(500).json({ error: `Could not parse Gemini's response: ${err.message}`, raw: rawText });
       return;
     }
 

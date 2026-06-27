@@ -1,11 +1,11 @@
 // POST /api/email-to-todo   { gmailId: "..." }
-// Fetches one Gmail message in full, asks Claude to condense it into a single
+// Fetches one Gmail message in full, asks Gemini to condense it into a single
 // short to-do line, and inserts it into the todos table tagged
 // source_type='email' / source_ref=<gmailId> — so it can be linked back to
 // the original message later (see renderTodos in index.html).
 // Used by the "→ To-do" button on an inbox row and inside the email modal.
 const { google } = require('googleapis');
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenAI } = require('@google/genai');
 const { getAuthorizedClient } = require('./_googleSync');
 
 function getHeader(headers, name) {
@@ -40,8 +40,8 @@ module.exports = async (req, res) => {
     res.status(400).json({ error: 'Missing gmailId' });
     return;
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    res.status(500).json({ error: 'ANTHROPIC_API_KEY is not set in Vercel env vars.' });
+  if (!process.env.GEMINI_API_KEY) {
+    res.status(500).json({ error: 'GEMINI_API_KEY is not set in Vercel env vars.' });
     return;
   }
 
@@ -59,7 +59,7 @@ module.exports = async (req, res) => {
     const subject = getHeader(headers, 'Subject');
     const body = (extractPlainText(full.data.payload) || full.data.snippet || '').slice(0, 4000);
 
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const prompt = `Condense this email into ONE short to-do line for Carter's task list — the action he should take, or if nothing's actionable, the one-line gist he'd want to remember. Under 10 words. No trailing period. No quotes.
 
 From: ${from || 'unknown'}
@@ -74,24 +74,24 @@ Respond with ONLY JSON, no prose, no markdown fences:
 
     let aiResponse;
     try {
-      aiResponse = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 300,
-        messages: [{ role: 'user', content: prompt }]
+      aiResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' }
       });
     } catch (aiErr) {
-      console.error('[email-to-todo] Anthropic call failed:', aiErr.status, aiErr.message);
-      res.status(500).json({ error: `Claude call failed: ${aiErr.message}` });
+      console.error('[email-to-todo] Gemini call failed:', aiErr.status, aiErr.message);
+      res.status(500).json({ error: `Gemini call failed: ${aiErr.message}` });
       return;
     }
 
-    const rawText = aiResponse.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const rawText = aiResponse.text || '';
     let parsed;
     try {
       parsed = JSON.parse(rawText.trim().replace(/^```json\s*|```$/g, ''));
     } catch (err) {
-      console.error('[email-to-todo] Could not parse Claude response:', rawText);
-      res.status(500).json({ error: `Could not parse Claude's response: ${err.message}`, raw: rawText });
+      console.error('[email-to-todo] Could not parse Gemini response:', rawText);
+      res.status(500).json({ error: `Could not parse Gemini's response: ${err.message}`, raw: rawText });
       return;
     }
 
