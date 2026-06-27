@@ -913,14 +913,14 @@
   // Re-syncs Gmail/Drive/Calendar every few minutes, but only while the tab
   // is actually visible — no point burning API calls on a background tab.
   // Also catches up immediately if you switch back after being away a while.
-  const AUTO_SYNC_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+  const AUTO_SYNC_INTERVAL_MS = 30 * 1000; // 30 seconds — nowhere near Google's per-user quotas for a single account
 
   setInterval(() => {
     if (document.visibilityState === 'visible') runGoogleSync();
   }, AUTO_SYNC_INTERVAL_MS);
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && Date.now() - lastAutoSyncAt > 60 * 1000){
+    if (document.visibilityState === 'visible' && Date.now() - lastAutoSyncAt > 20 * 1000){
       runGoogleSync();
     }
   });
