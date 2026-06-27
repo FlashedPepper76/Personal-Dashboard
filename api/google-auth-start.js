@@ -24,7 +24,8 @@ module.exports = async (req, res) => {
     prompt: "consent",        // forces refresh_token on every auth, not just the first
     scope: [
       "https://www.googleapis.com/auth/gmail.modify",
-      "https://www.googleapis.com/auth/drive.readonly"
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/calendar.readonly"
     ].join(" ")
   });
 

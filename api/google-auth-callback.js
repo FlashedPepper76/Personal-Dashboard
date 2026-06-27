@@ -54,7 +54,7 @@ module.exports = async (req, res) => {
   let syncSummary = 'Sync will run shortly.';
   try {
     const result = await syncGoogleData();
-    syncSummary = `Synced ${result.emails} email(s) and ${result.driveFiles} Drive file(s).`;
+    syncSummary = `Synced ${result.emails} email(s), ${result.driveFiles} Drive file(s), and ${result.calendarEvents} calendar event(s).`;
     if (result.errors && result.errors.length) {
       syncSummary += ` (${result.errors.join(' ')})`;
     }

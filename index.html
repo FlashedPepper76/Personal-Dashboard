@@ -372,7 +372,11 @@
     gap:12px;
     padding:10px 0;
     border-top:1px solid var(--glass-border);
+    text-decoration:none;
+    border-radius:8px;
+    transition:background .15s ease;
   }
+  .ev-item:hover{ background:var(--glass); }
   .ev-item:first-of-type{ border-top:none; padding-top:0; }
   .ev-time{
     font-family:'JetBrains Mono',monospace;
@@ -382,6 +386,7 @@
     width:64px;
   }
   .ev-title{ font-size:13px; color:var(--ink); line-height:1.4; }
+  .ev-meta{ font-size:11px; color:var(--ink-faint); margin-top:2px; }
 
   /* ---------- Fun fact ---------- */
   .card.fact{ display:flex; flex-direction:column; }
@@ -485,23 +490,9 @@
     <div class="grid-stack-item" gs-id="cal" gs-x="9" gs-y="4" gs-w="3" gs-h="6">
       <div class="grid-stack-item-content">
         <section class="card cal">
-          <h2>Up next <span class="count">Apple Calendar — demo</span></h2>
-
-          <div class="ev-item">
-            <div class="ev-time">2:00p</div>
-            <div class="ev-title">Aine + Benjamin — paper sync</div>
-          </div>
-          <div class="ev-item">
-            <div class="ev-time">6:30p</div>
-            <div class="ev-title">Lodge AIA planning call</div>
-          </div>
-          <div class="ev-item">
-            <div class="ev-time">Tom · 10a</div>
-            <div class="ev-title">Eye Associates — schedule review</div>
-          </div>
-          <div class="ev-item">
-            <div class="ev-time">Fri</div>
-            <div class="ev-title">Camp Barstow — fellowship walkthrough</div>
+          <h2>Up next <span class="count" id="calCount">Google Calendar</span></h2>
+          <div id="calList">
+            <div class="ev-item"><div class="ev-title">Loading…</div></div>
           </div>
         </section>
       </div>
@@ -711,6 +702,37 @@
     `).join('');
   }
 
+  function formatEventTime(iso, allDay){
+    if (!iso) return '';
+    const d = new Date(iso);
+    const now = new Date();
+    const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dayDiff = Math.round((startOfDay(d) - startOfDay(now)) / 86400000);
+    const dayLabel = dayDiff === 0 ? 'Today' : dayDiff === 1 ? 'Tomorrow'
+      : (dayDiff > 1 && dayDiff < 7) ? d.toLocaleDateString([], { weekday: 'short' })
+      : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    if (allDay) return dayLabel;
+    const timeLabel = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return dayDiff === 0 ? timeLabel : dayLabel + ' · ' + timeLabel;
+  }
+
+  function renderCalendar(events){
+    const list = document.getElementById('calList');
+    if (!events.length){
+      list.innerHTML = '<div class="ev-item"><div class="ev-title">Nothing on the calendar right now.</div></div>';
+      return;
+    }
+    list.innerHTML = events.map(ev => `
+      <a class="ev-item" href="${escapeHtml(ev.link || '#')}" target="_blank" rel="noopener">
+        <div class="ev-time">${escapeHtml(formatEventTime(ev.start_time, ev.all_day))}</div>
+        <div>
+          <div class="ev-title">${escapeHtml(ev.title)}</div>
+          ${ev.location ? `<div class="ev-meta">${escapeHtml(ev.location)}</div>` : ''}
+        </div>
+      </a>
+    `).join('');
+  }
+
   function renderTodos(todos){
     const list = document.getElementById('todoList');
     const countEl = document.getElementById('todoCount');
@@ -798,7 +820,7 @@
     const connectBtn = document.getElementById('connectBtn');
     const syncBtn = document.getElementById('syncBtn');
     if (connected){
-      pill.innerHTML = '<span class="dot"></span>Gmail &amp; Drive connected';
+      pill.innerHTML = '<span class="dot"></span>Gmail, Drive &amp; Calendar connected';
       connectBtn.textContent = 'Reconnect Google';
       connectBtn.innerHTML = 'Reconnect Google <span class="arrow">→</span>';
       syncBtn.style.display = '';
@@ -817,6 +839,7 @@
       renderInbox(data.emails || []);
       renderDrive(data.driveFiles || []);
       renderTodos(data.todos || []);
+      renderCalendar(data.calendarEvents || []);
     } catch (err) {
       const pill = document.getElementById('statusPill');
       pill.innerHTML = '<span class="dot"></span>Could not load dashboard data';

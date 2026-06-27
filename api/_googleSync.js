@@ -83,11 +83,12 @@ async function syncGoogleData() {
   const { supabase, oauth2Client } = await getAuthorizedClient();
 
   if (!oauth2Client) {
-    return { connected: false, emails: 0, driveFiles: 0, message: 'No Google token saved yet — connect Google first.' };
+    return { connected: false, emails: 0, driveFiles: 0, calendarEvents: 0, message: 'No Google token saved yet — connect Google first.' };
   }
 
   let emailCount = 0;
   let driveCount = 0;
+  let calendarCount = 0;
   const errors = [];
 
   // ---------- Gmail ----------
@@ -169,7 +170,47 @@ async function syncGoogleData() {
     errors.push(`Drive sync failed: ${err.message}`);
   }
 
-  return { connected: true, emails: emailCount, driveFiles: driveCount, errors };
+  // ---------- Calendar ----------
+  // Always exactly "the next 8 upcoming events" — a moving window, not a
+  // per-day count — so replaceSyncedRows naturally drops anything that's
+  // moved out of that window (past, or bumped by something closer).
+  try {
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    const list = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: new Date().toISOString(),
+      maxResults: 8,
+      singleEvents: true,
+      orderBy: 'startTime'
+    });
+    const events = list.data.items || [];
+
+    const eventRows = events.map((ev) => {
+      const isAllDay = !!(ev.start && ev.start.date);
+      // All-day events come back as bare dates (no time/zone). Anchor them at
+      // noon UTC rather than midnight so they don't shift to the previous day
+      // once the frontend converts to local time.
+      const startTime = isAllDay ? `${ev.start.date}T12:00:00Z` : ev.start?.dateTime;
+      const endTime = isAllDay ? (ev.end?.date ? `${ev.end.date}T12:00:00Z` : null) : ev.end?.dateTime;
+      return {
+        uid: ev.id,
+        title: ev.summary || '(no title)',
+        start_time: startTime || null,
+        end_time: endTime || null,
+        location: ev.location || null,
+        link: ev.htmlLink || null,
+        all_day: isAllDay,
+        synced_at: new Date().toISOString()
+      };
+    });
+
+    await replaceSyncedRows(supabase, 'calendar_events', 'uid', eventRows);
+    calendarCount = eventRows.length;
+  } catch (err) {
+    errors.push(`Calendar sync failed: ${err.message}`);
+  }
+
+  return { connected: true, emails: emailCount, driveFiles: driveCount, calendarEvents: calendarCount, errors };
 }
 
 module.exports = { syncGoogleData, getAuthorizedClient };
