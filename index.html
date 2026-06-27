@@ -547,6 +547,13 @@
     border-radius:12px;
     border:1px solid var(--glass-border);
     background:#000;
+    /* The NWS source GIF has a white basemap with colored precip overlays.
+       invert() flips that to black, and hue-rotate(180deg) afterward
+       approximately un-does the hue shift invert() causes on the colored
+       (non-grayscale) pixels — a standard trick for dropping a light-mode
+       image into a dark UI. brightness/saturate just dial it back a touch
+       so it reads as muted/minimal rather than a harsh raw inversion. */
+    filter: invert(1) hue-rotate(180deg) brightness(0.92) saturate(0.8) contrast(1.05);
   }
   .radar-caption{
     font-size:10px;
