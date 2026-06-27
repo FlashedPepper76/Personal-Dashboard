@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@12.6.0/dist/gridstack.min.css" />
 <style>
   :root{
     --void:#020203;
@@ -134,28 +135,19 @@
     color:var(--ink-faint);
   }
 
-  /* ---------- Grid ---------- */
-  .grid{
+  /* ---------- Grid (GridStack-powered, draggable/resizable) ---------- */
+  .grid-stack{
     margin-top:40px;
-    display:grid;
-    gap:18px;
-    grid-template-columns:1.25fr 1fr 0.85fr;
-    grid-template-rows:auto auto;
-    grid-template-areas:
-      "inbox todos fact"
-      "inbox drive cal";
   }
-
-  @media (max-width:880px){
-    .grid{
-      grid-template-columns:1fr;
-      grid-template-areas:
-        "inbox"
-        "todos"
-        "drive"
-        "cal"
-        "fact";
-    }
+  .grid-stack-item-content{
+    background:transparent;
+    overflow:visible;
+  }
+  .grid-stack-item .card{
+    width:100%;
+    height:100%;
+    box-sizing:border-box;
+    margin:0;
   }
 
   .card{
@@ -188,11 +180,11 @@
 
   @keyframes rise{ to{ opacity:1; transform:translateY(0); } }
 
-  .card.inbox{ grid-area:inbox; animation-delay:.05s; }
-  .card.todos{ grid-area:todos; animation-delay:.12s; }
-  .card.fact { grid-area:fact;  animation-delay:.19s; }
-  .card.drive{ grid-area:drive; animation-delay:.26s; }
-  .card.cal  { grid-area:cal;   animation-delay:.33s; }
+  .card.inbox{ animation-delay:.05s; }
+  .card.todos{ animation-delay:.12s; }
+  .card.fact { animation-delay:.19s; }
+  .card.drive{ animation-delay:.26s; }
+  .card.cal  { animation-delay:.33s; }
 
   .card h2{
     font-family:'Space Grotesk',sans-serif;
@@ -205,6 +197,7 @@
     display:flex;
     align-items:center;
     justify-content:space-between;
+    cursor:move;
   }
   .card h2 span.count{
     font-family:'JetBrains Mono',monospace;
@@ -272,6 +265,58 @@
   .todo-text{ font-size:13px; color:var(--ink); line-height:1.4; }
   .todo-meta{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--ink-faint); margin-top:4px; }
   .todo-meta b{ color:var(--cyan); font-weight:500; }
+  .todo-item{ position:relative; cursor:default; }
+  .todo-check{ cursor:pointer; transition:background .15s ease, border-color .15s ease; }
+  .todo-check.checked{ background:var(--cyan); border-color:var(--cyan); }
+  .todo-item .todo-text{ transition:color .15s ease, text-decoration-color .15s ease; }
+  .todo-item.completed .todo-text{ color:var(--ink-faint); text-decoration:line-through; }
+  .todo-dismiss-btn{
+    flex-shrink:0;
+    align-self:flex-start;
+    margin-left:auto;
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    color:var(--ink-faint);
+    background:var(--glass);
+    border:1px solid var(--glass-border);
+    border-radius:6px;
+    padding:3px 7px;
+    cursor:pointer;
+    opacity:0;
+    transition:opacity .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .todo-item:hover .todo-dismiss-btn{ opacity:1; }
+  .todo-dismiss-btn:hover{ color:var(--ink); border-color:var(--periwinkle); }
+  .todo-add-form{
+    display:flex;
+    gap:8px;
+    margin-top:14px;
+    padding-top:14px;
+    border-top:1px solid var(--glass-border);
+  }
+  .todo-add-form input{
+    flex:1;
+    background:var(--glass);
+    border:1px solid var(--glass-border);
+    border-radius:8px;
+    padding:7px 10px;
+    font-size:12.5px;
+    color:var(--ink);
+    font-family:inherit;
+  }
+  .todo-add-form input::placeholder{ color:var(--ink-faint); }
+  .todo-add-form input:focus{ outline:none; border-color:var(--periwinkle); }
+  .todo-add-form button{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:var(--ink-dim);
+    background:var(--glass-strong);
+    border:1px solid var(--glass-border);
+    border-radius:8px;
+    padding:0 14px;
+    cursor:pointer;
+  }
+  .todo-add-form button:hover{ color:var(--ink); border-color:var(--periwinkle); }
 
   /* ---------- Drive ---------- */
   .doc-item{
@@ -379,6 +424,7 @@
         <span class="pill" id="statusPill"><span class="dot"></span>Checking Google connection…</span>
         <a class="connect-btn" id="connectBtn" href="/api/google-auth-start">Connect Google <span class="arrow">→</span></a>
         <a class="connect-btn" id="syncBtn" href="/api/sync-google" style="display:none">Sync now <span class="arrow">↻</span></a>
+        <a class="connect-btn" id="resetLayoutBtn" href="#">Reset layout</a>
       </div>
     </div>
     <div class="clockbox">
@@ -387,91 +433,121 @@
     </div>
   </header>
 
-  <div class="grid">
+  <div class="grid-stack">
 
-    <section class="card inbox">
-      <h2>Inbox <span class="count" id="inboxCount">—</span></h2>
-      <div id="inboxList">
-        <div class="mail-item read"><div class="mail-body"><div class="mail-snippet">Loading…</div></div></div>
+    <div class="grid-stack-item" gs-id="inbox" gs-x="0" gs-y="0" gs-w="5" gs-h="9">
+      <div class="grid-stack-item-content">
+        <section class="card inbox">
+          <h2>Inbox <span class="count" id="inboxCount">—</span></h2>
+          <div id="inboxList">
+            <div class="mail-item read"><div class="mail-body"><div class="mail-snippet">Loading…</div></div></div>
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
 
-    <section class="card todos">
-      <h2>To-dos <span class="count">demo data</span></h2>
+    <div class="grid-stack-item" gs-id="todos" gs-x="5" gs-y="0" gs-w="4" gs-h="6">
+      <div class="grid-stack-item-content">
+        <section class="card todos">
+          <h2>To-dos <span class="count" id="todoCount">—</span></h2>
+          <div id="todoList">
+            <div class="todo-item"><div class="todo-text">Loading…</div></div>
+          </div>
+          <form id="todoAddForm" class="todo-add-form">
+            <input type="text" id="todoAddInput" placeholder="Add a to-do…" autocomplete="off">
+            <button type="submit">Add</button>
+          </form>
+        </section>
+      </div>
+    </div>
 
-      <div class="todo-item">
-        <div class="todo-check"></div>
-        <div>
-          <div class="todo-text">Finish the Conclusion section</div>
-          <div class="todo-meta">due <b>before submission</b> · from email w/ Aine Kim</div>
-        </div>
+    <div class="grid-stack-item" gs-id="fact" gs-x="9" gs-y="0" gs-w="3" gs-h="4">
+      <div class="grid-stack-item-content">
+        <section class="card fact">
+          <h2>Fun fact</h2>
+          <div class="fact-text">Octopuses have three hearts. Two pump blood to the gills, and the third pumps it to the rest of the body — but that third heart actually stops when the octopus swims, which is part of why they'd rather crawl.</div>
+          <div class="fact-tag">demo · refreshes daily once wired</div>
+        </section>
       </div>
+    </div>
 
-      <div class="todo-item">
-        <div class="todo-check"></div>
-        <div>
-          <div class="todo-text">Resolve Virginia regional classification note</div>
-          <div class="todo-meta">due <b>this week</b> · flagged in review doc</div>
-        </div>
+    <div class="grid-stack-item" gs-id="drive" gs-x="5" gs-y="6" gs-w="4" gs-h="6">
+      <div class="grid-stack-item-content">
+        <section class="card drive">
+          <h2>Recent docs <span class="count">Drive</span></h2>
+          <div id="driveList">
+            <div class="doc-item"><div class="doc-name">Loading…</div></div>
+          </div>
+        </section>
       </div>
+    </div>
 
-      <div class="todo-item">
-        <div class="todo-check"></div>
-        <div>
-          <div class="todo-text">Confirm H4 power/test stat with Benjamin</div>
-          <div class="todo-meta">due <b>Thu</b> · from email</div>
-        </div>
-      </div>
+    <div class="grid-stack-item" gs-id="cal" gs-x="9" gs-y="4" gs-w="3" gs-h="6">
+      <div class="grid-stack-item-content">
+        <section class="card cal">
+          <h2>Up next <span class="count">Apple Calendar — demo</span></h2>
 
-      <div class="todo-item">
-        <div class="todo-check"></div>
-        <div>
-          <div class="todo-text">Approve AIA Instagram copy</div>
-          <div class="todo-meta">due <b>tomorrow</b> · from Lodge email</div>
-        </div>
+          <div class="ev-item">
+            <div class="ev-time">2:00p</div>
+            <div class="ev-title">Aine + Benjamin — paper sync</div>
+          </div>
+          <div class="ev-item">
+            <div class="ev-time">6:30p</div>
+            <div class="ev-title">Lodge AIA planning call</div>
+          </div>
+          <div class="ev-item">
+            <div class="ev-time">Tom · 10a</div>
+            <div class="ev-title">Eye Associates — schedule review</div>
+          </div>
+          <div class="ev-item">
+            <div class="ev-time">Fri</div>
+            <div class="ev-title">Camp Barstow — fellowship walkthrough</div>
+          </div>
+        </section>
       </div>
-    </section>
-
-    <section class="card fact">
-      <h2>Fun fact</h2>
-      <div class="fact-text">Octopuses have three hearts. Two pump blood to the gills, and the third pumps it to the rest of the body — but that third heart actually stops when the octopus swims, which is part of why they'd rather crawl.</div>
-      <div class="fact-tag">demo · refreshes daily once wired</div>
-    </section>
-
-    <section class="card drive">
-      <h2>Recent docs <span class="count">Drive</span></h2>
-      <div id="driveList">
-        <div class="doc-item"><div class="doc-name">Loading…</div></div>
-      </div>
-    </section>
-
-    <section class="card cal">
-      <h2>Up next <span class="count">Apple Calendar — demo</span></h2>
-
-      <div class="ev-item">
-        <div class="ev-time">2:00p</div>
-        <div class="ev-title">Aine + Benjamin — paper sync</div>
-      </div>
-      <div class="ev-item">
-        <div class="ev-time">6:30p</div>
-        <div class="ev-title">Lodge AIA planning call</div>
-      </div>
-      <div class="ev-item">
-        <div class="ev-time">Tom · 10a</div>
-        <div class="ev-title">Eye Associates — schedule review</div>
-      </div>
-      <div class="ev-item">
-        <div class="ev-time">Fri</div>
-        <div class="ev-title">Camp Barstow — fellowship walkthrough</div>
-      </div>
-    </section>
+    </div>
 
   </div>
 </div>
 
 <div id="emailModalRoot"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/gridstack@12.6.0/dist/gridstack-all.js"></script>
 <script>
+  // ---------- Draggable / resizable widget grid ----------
+  const GRID_LAYOUT_KEY = 'commandDeckLayout_v1';
+  const grid = GridStack.init({
+    column: 12,
+    cellHeight: 60,
+    margin: 10,
+    float: true,
+    handle: '.card h2',
+    resizable: { handles: 'e, se, s, sw, w' }
+  });
+
+  (function restoreLayout(){
+    try {
+      const saved = JSON.parse(localStorage.getItem(GRID_LAYOUT_KEY) || 'null');
+      if (saved && saved.length) grid.load(saved);
+    } catch (err) {
+      console.error('Could not restore widget layout', err);
+    }
+  })();
+
+  grid.on('change', () => {
+    try {
+      localStorage.setItem(GRID_LAYOUT_KEY, JSON.stringify(grid.save(false)));
+    } catch (err) {
+      console.error('Could not save widget layout', err);
+    }
+  });
+
+  document.getElementById('resetLayoutBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    localStorage.removeItem(GRID_LAYOUT_KEY);
+    location.reload();
+  });
+
   // ---------- Greeting + clock ----------
   function paintClock(){
     const now = new Date();
@@ -635,6 +711,88 @@
     `).join('');
   }
 
+  function renderTodos(todos){
+    const list = document.getElementById('todoList');
+    const countEl = document.getElementById('todoCount');
+    const open = todos.filter(t => !t.completed);
+    countEl.textContent = open.length + ' open';
+    if (!todos.length){
+      list.innerHTML = '<div class="todo-item"><div class="todo-text">Nothing here yet — add one below.</div></div>';
+      return;
+    }
+    list.innerHTML = todos.map(t => `
+      <div class="todo-item${t.completed ? ' completed' : ''}" data-id="${escapeHtml(t.id)}">
+        <div class="todo-check${t.completed ? ' checked' : ''}" data-id="${escapeHtml(t.id)}"></div>
+        <div style="flex:1">
+          <div class="todo-text">${escapeHtml(t.text)}</div>
+          <div class="todo-meta">${t.due_label ? 'due <b>' + escapeHtml(t.due_label) + '</b> · ' : ''}${t.source_type === 'auto' ? 'auto-suggested' : 'added by you'}</div>
+        </div>
+        <button type="button" class="todo-dismiss-btn" data-id="${escapeHtml(t.id)}">✕</button>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('todoList').addEventListener('click', (e) => {
+    const check = e.target.closest('.todo-check');
+    const dismissBtn = e.target.closest('.todo-dismiss-btn');
+    if (check){
+      toggleTodo(check.dataset.id, !check.classList.contains('checked'));
+    } else if (dismissBtn){
+      dismissTodo(dismissBtn.dataset.id);
+    }
+  });
+
+  async function toggleTodo(id, completed){
+    const itemEl = document.querySelector('.todo-item[data-id="' + id + '"]');
+    if (itemEl){
+      itemEl.classList.toggle('completed', completed);
+      const checkEl = itemEl.querySelector('.todo-check');
+      if (checkEl) checkEl.classList.toggle('checked', completed);
+    }
+    try {
+      const res = await fetch('/api/todos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, completed })
+      });
+      if (!res.ok) throw new Error('Update failed: ' + res.status);
+    } catch (err) {
+      console.error('toggleTodo failed', err);
+      await loadDashboardData();
+    }
+  }
+
+  async function dismissTodo(id){
+    const itemEl = document.querySelector('.todo-item[data-id="' + id + '"]');
+    if (itemEl) itemEl.remove();
+    try {
+      const res = await fetch('/api/todos?id=' + encodeURIComponent(id), { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed: ' + res.status);
+    } catch (err) {
+      console.error('dismissTodo failed', err);
+      await loadDashboardData();
+    }
+  }
+
+  document.getElementById('todoAddForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('todoAddInput');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    try {
+      const res = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!res.ok) throw new Error('Create failed: ' + res.status);
+    } catch (err) {
+      console.error('add todo failed', err);
+    }
+    await loadDashboardData();
+  });
+
   function setStatus(connected){
     const pill = document.getElementById('statusPill');
     const connectBtn = document.getElementById('connectBtn');
@@ -658,6 +816,7 @@
       setStatus(data.googleConnected);
       renderInbox(data.emails || []);
       renderDrive(data.driveFiles || []);
+      renderTodos(data.todos || []);
     } catch (err) {
       const pill = document.getElementById('statusPill');
       pill.innerHTML = '<span class="dot"></span>Could not load dashboard data';
