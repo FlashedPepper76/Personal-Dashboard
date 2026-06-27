@@ -171,21 +171,42 @@ async function syncGoogleData() {
   }
 
   // ---------- Calendar ----------
-  // Always exactly "the next 8 upcoming events" — a moving window, not a
-  // per-day count — so replaceSyncedRows naturally drops anything that's
-  // moved out of that window (past, or bumped by something closer).
+  // Always exactly "the next 8 upcoming events" across ALL of your calendars
+  // (not just primary) — a moving window, not a per-day or per-calendar count
+  // — so replaceSyncedRows naturally drops anything that's moved out of that
+  // window (past, or bumped by something closer on any calendar).
   try {
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-    const list = await calendar.events.list({
-      calendarId: 'primary',
-      timeMin: new Date().toISOString(),
-      maxResults: 8,
-      singleEvents: true,
-      orderBy: 'startTime'
-    });
-    const events = list.data.items || [];
+    const calListResp = await calendar.calendarList.list();
+    const calendars = (calListResp.data.items || []).filter((c) => c.selected !== false);
 
-    const eventRows = events.map((ev) => {
+    const now = new Date().toISOString();
+    const perCalendarResults = await Promise.allSettled(
+      calendars.map((cal) =>
+        calendar.events
+          .list({ calendarId: cal.id, timeMin: now, maxResults: 8, singleEvents: true, orderBy: 'startTime' })
+          .then((resp) => ({ calendarName: cal.summary || cal.id, items: resp.data.items || [] }))
+      )
+    );
+
+    const allEvents = [];
+    perCalendarResults.forEach((result, i) => {
+      if (result.status === 'fulfilled') {
+        result.value.items.forEach((ev) => allEvents.push({ ev, calendarName: result.value.calendarName }));
+      } else {
+        errors.push(`Calendar "${calendars[i].summary || calendars[i].id}" failed: ${result.reason.message}`);
+      }
+    });
+
+    // Sort the merged pool by actual start time, then take the global next 8.
+    allEvents.sort((a, b) => {
+      const aTime = a.ev.start?.dateTime || a.ev.start?.date;
+      const bTime = b.ev.start?.dateTime || b.ev.start?.date;
+      return new Date(aTime) - new Date(bTime);
+    });
+    const next8 = allEvents.slice(0, 8);
+
+    const eventRows = next8.map(({ ev, calendarName }) => {
       const isAllDay = !!(ev.start && ev.start.date);
       // All-day events come back as bare dates (no time/zone). Anchor them at
       // noon UTC rather than midnight so they don't shift to the previous day
@@ -200,6 +221,7 @@ async function syncGoogleData() {
         location: ev.location || null,
         link: ev.htmlLink || null,
         all_day: isAllDay,
+        calendar_name: calendarName,
         synced_at: new Date().toISOString()
       };
     });

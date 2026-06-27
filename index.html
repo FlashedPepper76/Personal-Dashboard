@@ -148,7 +148,18 @@
     height:100%;
     box-sizing:border-box;
     margin:0;
+    display:flex;
+    flex-direction:column;
   }
+  .card h2{ flex-shrink:0; }
+  .card-scroll{
+    flex:1 1 auto;
+    overflow-y:auto;
+    min-height:0;
+  }
+  .card-scroll::-webkit-scrollbar{ width:6px; }
+  .card-scroll::-webkit-scrollbar-track{ background:transparent; }
+  .card-scroll::-webkit-scrollbar-thumb{ background:var(--glass-strong); border-radius:3px; }
 
   .card{
     position:relative;
@@ -197,8 +208,13 @@
     display:flex;
     align-items:center;
     justify-content:space-between;
-    cursor:move;
   }
+  .grid-stack.edit-mode .card h2{ cursor:move; }
+  .grid-stack.edit-mode .grid-stack-item .card{
+    outline:1px dashed var(--periwinkle);
+    outline-offset:-1px;
+  }
+  #editLayoutBtn.active{ color:var(--ink); border-color:var(--periwinkle); background:var(--glass-strong); }
   .card h2 span.count{
     font-family:'JetBrains Mono',monospace;
     color:var(--cyan);
@@ -293,6 +309,7 @@
     margin-top:14px;
     padding-top:14px;
     border-top:1px solid var(--glass-border);
+    flex-shrink:0;
   }
   .todo-add-form input{
     flex:1;
@@ -430,6 +447,7 @@
         <a class="connect-btn" id="connectBtn" href="/api/google-auth-start">Connect Google <span class="arrow">→</span></a>
         <a class="connect-btn" id="syncBtn" href="/api/sync-google" style="display:none">Sync now <span class="arrow">↻</span></a>
         <a class="connect-btn" id="resetLayoutBtn" href="#">Reset layout</a>
+        <a class="connect-btn" id="editLayoutBtn" href="#">Edit layout</a>
       </div>
     </div>
     <div class="clockbox">
@@ -444,7 +462,7 @@
       <div class="grid-stack-item-content">
         <section class="card inbox">
           <h2>Inbox <span class="count" id="inboxCount">—</span></h2>
-          <div id="inboxList">
+          <div id="inboxList" class="card-scroll">
             <div class="mail-item read"><div class="mail-body"><div class="mail-snippet">Loading…</div></div></div>
           </div>
         </section>
@@ -455,7 +473,7 @@
       <div class="grid-stack-item-content">
         <section class="card todos">
           <h2>To-dos <span class="count" id="todoCount">—</span></h2>
-          <div id="todoList">
+          <div id="todoList" class="card-scroll">
             <div class="todo-item"><div class="todo-text">Loading…</div></div>
           </div>
           <form id="todoAddForm" class="todo-add-form">
@@ -480,7 +498,7 @@
       <div class="grid-stack-item-content">
         <section class="card drive">
           <h2>Recent docs <span class="count">Drive</span></h2>
-          <div id="driveList">
+          <div id="driveList" class="card-scroll">
             <div class="doc-item"><div class="doc-name">Loading…</div></div>
           </div>
         </section>
@@ -491,7 +509,7 @@
       <div class="grid-stack-item-content">
         <section class="card cal">
           <h2>Up next <span class="count" id="calCount">Google Calendar</span></h2>
-          <div id="calList">
+          <div id="calList" class="card-scroll">
             <div class="ev-item"><div class="ev-title">Loading…</div></div>
           </div>
         </section>
@@ -524,6 +542,18 @@
       console.error('Could not restore widget layout', err);
     }
   })();
+
+  grid.disable(); // locked by default — only movable/resizable in edit mode
+
+  document.getElementById('editLayoutBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    const btn = e.currentTarget;
+    const turningOn = !btn.classList.contains('active');
+    btn.classList.toggle('active', turningOn);
+    btn.textContent = turningOn ? 'Done editing' : 'Edit layout';
+    document.querySelector('.grid-stack').classList.toggle('edit-mode', turningOn);
+    if (turningOn) grid.enable(); else grid.disable();
+  });
 
   grid.on('change', () => {
     try {
@@ -727,7 +757,7 @@
         <div class="ev-time">${escapeHtml(formatEventTime(ev.start_time, ev.all_day))}</div>
         <div>
           <div class="ev-title">${escapeHtml(ev.title)}</div>
-          ${ev.location ? `<div class="ev-meta">${escapeHtml(ev.location)}</div>` : ''}
+          <div class="ev-meta">${[ev.location, ev.calendar_name].filter(Boolean).map(escapeHtml).join(' · ')}</div>
         </div>
       </a>
     `).join('');
