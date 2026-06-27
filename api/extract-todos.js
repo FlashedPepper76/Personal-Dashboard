@@ -6,6 +6,7 @@
 // todos. Skips anything that duplicates an already-open todo.
 const { google } = require('googleapis');
 const { GoogleGenAI } = require('@google/genai');
+const webpush = require('web-push');
 const { getAuthorizedClient } = require('./_googleSync');
 
 function getHeader(headers, name) {
@@ -27,6 +28,41 @@ function extractPlainText(payload) {
   }
   walk(payload);
   return text;
+}
+
+// Sends one push notification per subscribed device for anything Gemini
+// flagged urgent this run. Best-effort throughout — a notification failure
+// should never fail the extract-todos request itself, since the todos are
+// already inserted by the time this runs.
+async function sendUrgentPushNotifications(supabase, urgentItems) {
+  if (!process.env.WEB_PUSH_PUBLIC_KEY || !process.env.WEB_PUSH_PRIVATE_KEY) return; // not configured yet
+
+  webpush.setVapidDetails(
+    process.env.WEB_PUSH_CONTACT || 'mailto:command-deck@localhost',
+    process.env.WEB_PUSH_PUBLIC_KEY,
+    process.env.WEB_PUSH_PRIVATE_KEY
+  );
+
+  const { data: subs } = await supabase.from('push_subscriptions').select('*');
+  if (!subs || !subs.length) return;
+
+  const title = urgentItems.length === 1 ? 'Urgent to-do' : `${urgentItems.length} urgent to-dos`;
+  const body = urgentItems.map((s) => s.text).slice(0, 3).join(' • ');
+  const payload = JSON.stringify({ title, body });
+
+  await Promise.all(subs.map(async (sub) => {
+    const pushSubscription = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
+    try {
+      await webpush.sendNotification(pushSubscription, payload);
+    } catch (err) {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        // Subscription is dead (browser unsubscribed, permissions revoked, etc.) — clean it up.
+        await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+      } else {
+        console.error('[extract-todos] push send failed:', err.message);
+      }
+    }
+  }));
 }
 
 module.exports = async (req, res) => {
@@ -106,7 +142,9 @@ ${docContext.length ? `DOCS:\n${docContext.map((d, i) => `[doc${i}] fileId=${d.f
 Only suggest something if there's a clear, concrete action Carter needs to take (a reply owed, a deadline, a task someone asked him to do, an unresolved item flagged in a doc). Skip newsletters, receipts, marketing, and anything purely informational. Be conservative — a short list of real action items beats a long list of guesses.
 
 Respond with ONLY a JSON array (no prose, no markdown fences), each item shaped like:
-{"text": "short actionable description", "due_label": "Thu" or "this week" or null, "source_type": "email" or "doc", "source_ref": "the gmailId or fileId it came from"}
+{"text": "short actionable description", "due_label": "Thu" or "this week" or null, "source_type": "email" or "doc", "source_ref": "the gmailId or fileId it came from", "urgent": true or false}
+
+Mark "urgent" true only for something genuinely time-sensitive or high-stakes — a reply owed today/tomorrow, a real deadline, something someone is actively waiting on. This triggers a phone notification, so be conservative; most items should be false.
 
 If there's nothing actionable, respond with: []`;
 
@@ -135,25 +173,30 @@ If there's nothing actionable, respond with: []`;
     const { data: openTodos } = await supabase.from('todos').select('text').eq('completed', false);
     const openTextSet = new Set((openTodos || []).map((t) => t.text.trim().toLowerCase()));
 
-    const toInsert = suggestions
-      .filter((s) => s && s.text && !openTextSet.has(String(s.text).trim().toLowerCase()))
-      .map((s) => ({
-        text: String(s.text).trim(),
-        due_label: s.due_label || null,
-        source_type: 'auto',
-        source_ref: s.source_ref || null,
-        completed: false
-      }));
+    const newSuggestions = suggestions.filter((s) => s && s.text && !openTextSet.has(String(s.text).trim().toLowerCase()));
+    const toInsert = newSuggestions.map((s) => ({
+      text: String(s.text).trim(),
+      due_label: s.due_label || null,
+      source_type: 'auto',
+      source_ref: s.source_ref || null,
+      completed: false
+    }));
 
     if (toInsert.length) {
       const { error: insertErr } = await supabase.from('todos').insert(toInsert);
       if (insertErr) throw insertErr;
     }
 
+    const urgentNew = newSuggestions.filter((s) => s.urgent);
+    if (urgentNew.length) {
+      await sendUrgentPushNotifications(supabase, urgentNew);
+    }
+
     res.status(200).json({
       suggested: suggestions.length,
       inserted: toInsert.length,
       skippedDuplicates: suggestions.length - toInsert.length,
+      urgentNotified: urgentNew.length,
       driveContentAvailable
     });
   } catch (err) {

@@ -36,7 +36,7 @@ module.exports = async (req, res) => {
     }
     const { data, error } = await supabase
       .from('todos')
-      .update({ completed: !!completed })
+      .update({ completed: !!completed, completed_at: completed ? new Date().toISOString() : null })
       .eq('id', id)
       .select()
       .single();

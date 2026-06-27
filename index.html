@@ -525,6 +525,49 @@
   .ev-title{ font-size:13px; color:var(--ink); line-height:1.4; }
   .ev-meta{ font-size:11px; color:var(--ink-faint); margin-top:2px; }
 
+  /* ---------- Weather ---------- */
+  .card.weather{ display:flex; flex-direction:column; }
+  .weather-main{ display:flex; align-items:center; gap:14px; margin-top:2px; }
+  .weather-icon{ width:46px; height:46px; border-radius:10px; flex-shrink:0; }
+  .weather-temp{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:32px;
+    font-weight:700;
+    color:var(--ink);
+    line-height:1;
+  }
+  .weather-desc{ font-size:13px; color:var(--ink-dim); margin-top:12px; line-height:1.4; }
+  .weather-meta{ font-size:10.5px; color:var(--ink-faint); margin-top:10px; font-family:'JetBrains Mono',monospace; }
+  .radar-wrap{ flex:1; min-height:0; display:flex; flex-direction:column; margin-top:14px; }
+  .radar-img{
+    width:100%;
+    flex:1;
+    min-height:0;
+    object-fit:cover;
+    border-radius:12px;
+    border:1px solid var(--glass-border);
+    background:#000;
+  }
+  .radar-caption{
+    font-size:10px;
+    color:var(--ink-faint);
+    text-align:center;
+    margin-top:6px;
+    font-family:'JetBrains Mono',monospace;
+  }
+
+  /* ---------- This week ---------- */
+  .card.weekly{ display:flex; flex-direction:column; }
+  .weekly-stats{ display:flex; flex-direction:column; gap:16px; margin-top:4px; }
+  .weekly-stat-label{ font-size:12px; color:var(--ink-dim); }
+  .weekly-stat-value{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:22px;
+    font-weight:700;
+    color:var(--ink);
+    margin-top:2px;
+  }
+
   /* ---------- Fun fact ---------- */
   .card.fact{ display:flex; flex-direction:column; }
   .fact-text{
@@ -577,6 +620,7 @@
         <a class="connect-btn" id="syncBtn" href="/api/sync-google" style="display:none">Sync now <span class="arrow">↻</span></a>
         <a class="connect-btn" id="resetLayoutBtn" href="#">Reset layout</a>
         <a class="connect-btn" id="editLayoutBtn" href="#">Edit layout</a>
+        <a class="connect-btn" id="pushBtn" href="#">Enable phone alerts</a>
         <a class="connect-btn" id="lockBtn" href="#">Lock dashboard</a>
       </div>
     </div>
@@ -622,9 +666,9 @@
     <div class="grid-stack-item" gs-id="fact" gs-x="9" gs-y="0" gs-w="3" gs-h="4">
       <div class="grid-stack-item-content">
         <section class="card fact">
-          <h2>Fun fact</h2>
-          <div class="fact-text">Octopuses have three hearts. Two pump blood to the gills, and the third pumps it to the rest of the body — but that third heart actually stops when the octopus swims, which is part of why they'd rather crawl.</div>
-          <div class="fact-tag">demo · refreshes daily once wired</div>
+          <h2>Fun fact <span style="display:flex; align-items:center; gap:8px;"><button type="button" id="factRefreshBtn" class="todo-clear-btn">New fact</button></span></h2>
+          <div class="fact-text" id="factText">Loading a fact…</div>
+          <div class="fact-tag" id="factTag"></div>
         </section>
       </div>
     </div>
@@ -647,6 +691,28 @@
           <div id="calList" class="card-scroll">
             <div class="ev-item"><div class="ev-title">Loading…</div></div>
           </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="grid-stack-item" gs-id="weather" gs-x="0" gs-y="9" gs-w="5" gs-h="9">
+      <div class="grid-stack-item-content">
+        <section class="card weather">
+          <h2>Weather <span class="count" id="weatherLabel">—</span></h2>
+          <div id="weatherBody">Loading…</div>
+          <div class="radar-wrap">
+            <img class="radar-img" src="https://radar.weather.gov/ridge/standard/KCAE_loop.gif" alt="Radar loop centered on Columbia / Lexington County, SC" loading="lazy">
+            <div class="radar-caption">KCAE radar · Lexington County, SC</div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="grid-stack-item" gs-id="weekly" gs-x="9" gs-y="10" gs-w="3" gs-h="5">
+      <div class="grid-stack-item-content">
+        <section class="card weekly">
+          <h2>This week</h2>
+          <div id="weeklyBody" class="weekly-stats">Loading…</div>
         </section>
       </div>
     </div>
@@ -1121,6 +1187,44 @@
     banner.style.display = '';
   }
 
+  function renderWeather(weather){
+    const labelEl = document.getElementById('weatherLabel');
+    const bodyEl = document.getElementById('weatherBody');
+    if (!weather){
+      labelEl.textContent = '—';
+      bodyEl.textContent = 'Unavailable right now.';
+      return;
+    }
+    labelEl.textContent = weather.label || 'Now';
+    bodyEl.innerHTML = `
+      <div class="weather-main">
+        ${weather.icon ? `<img class="weather-icon" src="${escapeHtml(weather.icon)}" alt="">` : ''}
+        <div class="weather-temp">${weather.tempF != null ? Math.round(weather.tempF) + '°' : '—'}</div>
+      </div>
+      <div class="weather-desc">${escapeHtml(weather.shortForecast || '')}</div>
+      ${weather.windSpeed ? `<div class="weather-meta">Wind ${escapeHtml(weather.windSpeed)}</div>` : ''}
+    `;
+  }
+
+  function renderWeeklyStats(stats){
+    const bodyEl = document.getElementById('weeklyBody');
+    if (!stats){
+      bodyEl.textContent = 'Unavailable right now.';
+      return;
+    }
+    const rows = [
+      ['To-dos completed', stats.completed],
+      ['Emails archived', stats.archived],
+      ['AI-suggested to-dos', stats.aiSuggested]
+    ];
+    bodyEl.innerHTML = rows.map(([label, value]) => `
+      <div>
+        <div class="weekly-stat-label">${escapeHtml(label)}</div>
+        <div class="weekly-stat-value">${value}</div>
+      </div>
+    `).join('');
+  }
+
   async function loadDashboardData(){
     try {
       const res = await fetch('/api/dashboard-data', { cache: 'no-store' });
@@ -1132,6 +1236,8 @@
       renderTodos(data.todos || []);
       renderCalendar(data.calendarEvents || []);
       renderDigest(data.digest);
+      renderWeather(data.weather);
+      renderWeeklyStats(data.weeklyStats);
     } catch (err) {
       const pill = document.getElementById('statusPill');
       pill.innerHTML = '<span class="dot"></span>Could not load dashboard data';
@@ -1188,6 +1294,102 @@
   });
 
   loadDashboardData();
+
+  // ---------- Fun fact ----------
+  // Fresh fact straight from Gemini every time the dashboard opens (not
+  // cached per-day like the digest) — see /api/fun-fact. Also re-fetchable
+  // any time via the "New fact" button without touching anything else.
+  async function loadFunFact(){
+    const textEl = document.getElementById('factText');
+    const tagEl = document.getElementById('factTag');
+    const btn = document.getElementById('factRefreshBtn');
+    if (btn) btn.disabled = true;
+    textEl.textContent = 'Loading a fact…';
+    tagEl.textContent = '';
+    try {
+      const res = await fetch('/api/fun-fact', { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || !data.text) throw new Error(data.error || 'No fact returned');
+      textEl.textContent = data.text;
+      tagEl.textContent = data.fallback ? 'offline fact' : (data.category || 'fun fact');
+    } catch (err) {
+      console.error('loadFunFact failed', err);
+      textEl.textContent = 'Couldn\'t load a fact right now.';
+      tagEl.textContent = '';
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  document.getElementById('factRefreshBtn').addEventListener('click', loadFunFact);
+  loadFunFact();
+
+  // ---------- Push notifications (urgent AI-flagged items only) ----------
+  // Public VAPID key — safe to embed client-side, that's how VAPID works
+  // (only the private key, held server-side, can actually sign a send).
+  const VAPID_PUBLIC_KEY = 'BFQHUoW2QHrXIBecFq5UVOxW4_38QI79FcPTuPWtSYkrZZ4q31vVTZwTwzfuCwUSuY6WT-p-f7dU60w4EscDMio';
+
+  function urlBase64ToUint8Array(base64String){
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const out = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i++) out[i] = rawData.charCodeAt(i);
+    return out;
+  }
+
+  async function refreshPushButton(){
+    const btn = document.getElementById('pushBtn');
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !window.isSecureContext){
+      btn.style.display = 'none';
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      btn.textContent = sub ? 'Phone alerts on ✓' : 'Enable phone alerts';
+    } catch (err) {
+      btn.textContent = 'Enable phone alerts';
+    }
+  }
+
+  document.getElementById('pushBtn').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const btn = e.currentTarget;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)){
+      alert('Push notifications aren\'t supported in this browser. On iPhone: Share → Add to Home Screen first, then open it from there and try again — iOS only allows web push from an installed home-screen app.');
+      return;
+    }
+    btn.textContent = 'Enabling…';
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted'){
+        btn.textContent = 'Enable phone alerts';
+        return;
+      }
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub){
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+      }
+      const res = await fetch('/api/dashboard-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'subscribe-push', subscription: sub.toJSON() })
+      });
+      if (!res.ok) throw new Error('Server rejected the subscription');
+      btn.textContent = 'Phone alerts on ✓';
+    } catch (err) {
+      console.error('push subscribe failed', err);
+      btn.textContent = 'Enable phone alerts';
+      alert('Could not enable phone alerts: ' + err.message);
+    }
+  });
+
+  refreshPushButton();
 
   // ---------- AI auto-detect to-dos on open ----------
   // Every time the dashboard is actually opened/reloaded, ask Claude to scan

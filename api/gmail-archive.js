@@ -34,6 +34,11 @@ module.exports = async (req, res) => {
     const { error } = await supabase.from('emails').delete().eq('gmail_id', gmailId);
     if (error) throw error;
 
+    // Best-effort log for the weekly rollup card — archiving the email above
+    // is the thing that matters; a failed log entry shouldn't undo it.
+    const { error: logErr } = await supabase.from('activity_log').insert({ event_type: 'email_archived' });
+    if (logErr) console.error('[gmail-archive] activity log insert failed:', logErr.message);
+
     res.status(200).json({ archived: true });
   } catch (err) {
     const needsReconnect = /insufficient|scope|permission/i.test(err.message);
