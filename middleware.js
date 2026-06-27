@@ -1,8 +1,8 @@
 // Vercel Routing Middleware — runs on every request to this project before
 // the static page or any /api function. Gates everything behind the signed
-// `dashboard_session` cookie set by /api/login, except:
-//   - /login.html and /api/login (have to be reachable while logged out)
-//   - /api/logout (harmless to allow regardless of auth state)
+// `dashboard_session` cookie set by /api/auth (login action), except:
+//   - /login.html and /api/auth (has to be reachable while logged out, for
+//     both the login and logout actions)
 //   - /api/extract-todos, but ONLY when it's the actual Vercel Cron call
 //     carrying `Authorization: Bearer <CRON_SECRET>` — Vercel adds that
 //     header itself when CRON_SECRET is set, so this isn't spoofable by an
@@ -16,7 +16,7 @@ export const config = {
   runtime: 'nodejs'
 };
 
-const PUBLIC_PATHS = new Set(['/login.html', '/api/login', '/api/logout']);
+const PUBLIC_PATHS = new Set(['/login.html', '/api/auth']);
 
 function sign(expiry, secret) {
   return crypto.createHmac('sha256', secret).update(String(expiry)).digest('hex');

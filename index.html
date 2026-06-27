@@ -702,7 +702,11 @@
   document.getElementById('lockBtn').addEventListener('click', async (e) => {
     e.preventDefault();
     try {
-      await fetch('/api/logout', { method: 'POST' });
+      await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'logout' })
+      });
     } catch (err) {
       console.error('logout failed', err);
     }
@@ -1107,6 +1111,16 @@
     }
   }
 
+  function renderDigest(digest){
+    const banner = document.getElementById('digestBanner');
+    if (!digest){
+      banner.style.display = 'none';
+      return;
+    }
+    document.getElementById('digestText').textContent = digest;
+    banner.style.display = '';
+  }
+
   async function loadDashboardData(){
     try {
       const res = await fetch('/api/dashboard-data', { cache: 'no-store' });
@@ -1117,6 +1131,7 @@
       renderDrive(data.driveFiles || [], data.unseenComments || []);
       renderTodos(data.todos || []);
       renderCalendar(data.calendarEvents || []);
+      renderDigest(data.digest);
     } catch (err) {
       const pill = document.getElementById('statusPill');
       pill.innerHTML = '<span class="dot"></span>Could not load dashboard data';
@@ -1172,20 +1187,7 @@
     }
   });
 
-  async function loadDailyDigest(){
-    try {
-      const res = await fetch('/api/daily-digest', { cache: 'no-store' });
-      const result = await res.json();
-      if (!res.ok || result.error || !result.digest) return;
-      document.getElementById('digestText').textContent = result.digest;
-      document.getElementById('digestBanner').style.display = '';
-    } catch (err) {
-      console.error('daily digest failed', err);
-    }
-  }
-
   loadDashboardData();
-  loadDailyDigest();
 
   // ---------- AI auto-detect to-dos on open ----------
   // Every time the dashboard is actually opened/reloaded, ask Claude to scan
