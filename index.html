@@ -1297,7 +1297,8 @@
 
   // ---------- Fun fact ----------
   // Fresh fact straight from Gemini every time the dashboard opens (not
-  // cached per-day like the digest) — see /api/fun-fact. Also re-fetchable
+  // cached per-day like the digest) — see /api/dashboard-data?fact=1 (folded
+  // in there, not its own file, to stay under Vercel's function cap). Also re-fetchable
   // any time via the "New fact" button without touching anything else.
   async function loadFunFact(){
     const textEl = document.getElementById('factText');
@@ -1307,7 +1308,7 @@
     textEl.textContent = 'Loading a fact…';
     tagEl.textContent = '';
     try {
-      const res = await fetch('/api/fun-fact', { cache: 'no-store' });
+      const res = await fetch('/api/dashboard-data?fact=1', { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok || !data.text) throw new Error(data.error || 'No fact returned');
       textEl.textContent = data.text;
