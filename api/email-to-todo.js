@@ -72,17 +72,25 @@ Also infer a due_label if a deadline or date is implied (e.g. "Thu", "this week"
 Respond with ONLY JSON, no prose, no markdown fences:
 {"text": "short todo text", "due_label": "Thu" or null}`;
 
-    const aiResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }]
-    });
+    let aiResponse;
+    try {
+      aiResponse = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompt }]
+      });
+    } catch (aiErr) {
+      console.error('[email-to-todo] Anthropic call failed:', aiErr.status, aiErr.message);
+      res.status(500).json({ error: `Claude call failed: ${aiErr.message}` });
+      return;
+    }
 
     const rawText = aiResponse.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
     let parsed;
     try {
       parsed = JSON.parse(rawText.trim().replace(/^```json\s*|```$/g, ''));
     } catch (err) {
+      console.error('[email-to-todo] Could not parse Claude response:', rawText);
       res.status(500).json({ error: `Could not parse Claude's response: ${err.message}`, raw: rawText });
       return;
     }
@@ -100,10 +108,14 @@ Respond with ONLY JSON, no prose, no markdown fences:
       })
       .select()
       .single();
-    if (insertErr) throw insertErr;
+    if (insertErr) {
+      console.error('[email-to-todo] Supabase insert failed:', insertErr.message);
+      throw insertErr;
+    }
 
     res.status(200).json({ todo: todoRow });
   } catch (err) {
+    console.error('[email-to-todo] failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 };

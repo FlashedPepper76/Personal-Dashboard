@@ -114,6 +114,9 @@ If there's nothing actionable, respond with: []`;
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }]
+    }).catch((aiErr) => {
+      console.error('[extract-todos] Anthropic call failed:', aiErr.status, aiErr.message);
+      throw new Error(`Claude call failed: ${aiErr.message}`);
     });
 
     const rawText = aiResponse.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
@@ -151,6 +154,7 @@ If there's nothing actionable, respond with: []`;
       driveContentAvailable
     });
   } catch (err) {
+    console.error('[extract-todos] failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 };

@@ -1119,6 +1119,36 @@
 
   loadDashboardData();
 
+  // ---------- AI auto-detect to-dos on open ----------
+  // Every time the dashboard is actually opened/reloaded, ask Claude to scan
+  // recent emails (+ Drive docs) for action items via /api/extract-todos —
+  // same logic the daily cron uses, just also fired on page load. Throttled
+  // via localStorage so rapid reloads (or a flaky tab) don't re-run it and
+  // burn API calls every few seconds.
+  const EXTRACT_TODOS_MIN_GAP_MS = 5 * 60 * 1000; // once per 5 min, even across reloads
+
+  async function autoExtractTodosOnOpen(){
+    const last = Number(localStorage.getItem('lastExtractTodosAt') || 0);
+    if (Date.now() - last < EXTRACT_TODOS_MIN_GAP_MS) return;
+    localStorage.setItem('lastExtractTodosAt', String(Date.now()));
+
+    const countEl = document.getElementById('todoCount');
+    const originalCount = countEl ? countEl.textContent : null;
+    if (countEl) countEl.textContent = 'scanning…';
+    try {
+      const res = await fetch('/api/extract-todos', { cache: 'no-store' });
+      const result = await res.json();
+      if (!res.ok || result.error) throw new Error(result.error || 'extract-todos failed');
+      await loadDashboardData(); // overwrites todoCount with the real count either way
+    } catch (err) {
+      console.error('auto extract-todos failed', err);
+      if (countEl && originalCount !== null) countEl.textContent = originalCount;
+      document.getElementById('statusPill').innerHTML = '<span class="dot"></span>Auto to-do scan failed: ' + escapeHtml(err.message);
+    }
+  }
+
+  autoExtractTodosOnOpen();
+
   // ---------- Flow-field topography + dense reactive dot grid ----------
   const canvas = document.getElementById('field');
   const ctx = canvas.getContext('2d');
