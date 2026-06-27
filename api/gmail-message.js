@@ -7,7 +7,7 @@ const { getAuthorizedClient } = require('./_googleSync');
 
 function decodeBase64Url(data) {
   if (!data) return '';
-  return Buffer.from(data, 'base64').toString('utf-8');
+  return Buffer.from(data, 'base64url').toString('utf-8');
 }
 
 // MIME messages can nest parts arbitrarily (e.g. multipart/alternative inside

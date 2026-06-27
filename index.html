@@ -587,10 +587,6 @@
       const msg = await res.json();
       if (!res.ok || msg.error) throw new Error(msg.error || 'Could not load email');
 
-      const bodyHtml = msg.bodyHtml
-        ? `<iframe sandbox="" srcdoc="${escapeHtml(msg.bodyHtml)}"></iframe>`
-        : `<div>${escapeHtml(msg.bodyText || msg.snippet || '(no readable body)')}</div>`;
-
       root.querySelector('.email-modal').innerHTML = `
         <span class="email-modal-close" id="emailModalCloseBtn2">Close ✕</span>
         <h3>${escapeHtml(msg.subject || '(no subject)')}</h3>
@@ -599,9 +595,22 @@
           ${msg.to ? 'To: ' + escapeHtml(msg.to) + '<br>' : ''}
           ${msg.date ? escapeHtml(msg.date) : ''}
         </div>
-        <div class="email-modal-body">${bodyHtml}</div>
+        <div class="email-modal-body" id="emailModalBody"></div>
       `;
       document.getElementById('emailModalCloseBtn2').addEventListener('click', closeEmailModal);
+
+      const bodyEl = document.getElementById('emailModalBody');
+      if (msg.bodyHtml){
+        // Set srcdoc as a real DOM property, not a string-built HTML attribute —
+        // the email's own HTML is full of double quotes (style="...", href="...")
+        // which would break out of a string-embedded attribute immediately.
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('sandbox', '');
+        iframe.srcdoc = msg.bodyHtml;
+        bodyEl.appendChild(iframe);
+      } else {
+        bodyEl.textContent = msg.bodyText || msg.snippet || '(no readable body)';
+      }
     } catch (err) {
       root.querySelector('.email-modal').innerHTML = `
         <span class="email-modal-close" id="emailModalCloseBtn3">Close ✕</span>
