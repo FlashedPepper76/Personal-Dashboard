@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Command Deck — Locked</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#020203;
+    --navy:#09090b;
+    --ink:#f0f2f6;
+    --ink-dim:#9a9eac;
+    --ink-faint:#5a5d68;
+    --periwinkle:#aab2c4;
+    --glass:rgba(255,255,255,0.05);
+    --glass-strong:rgba(255,255,255,0.09);
+    --glass-border:rgba(255,255,255,0.13);
+    --radius:18px;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; height:100%; }
+  body{
+    min-height:100vh;
+    font-family:'Inter',sans-serif;
+    color:var(--ink);
+    background:linear-gradient(165deg, var(--void) 0%, var(--navy) 55%, var(--void) 100%);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  .panel{
+    width:min(360px, 100%);
+    background:var(--glass);
+    border:1px solid var(--glass-border);
+    border-radius:var(--radius);
+    backdrop-filter:blur(18px) saturate(1.1);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 30px rgba(0,0,0,0.35);
+    padding:32px 28px;
+  }
+  .panel h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:22px;
+    margin:0 0 6px;
+  }
+  .panel p.sub{
+    font-size:13px;
+    color:var(--ink-faint);
+    margin:0 0 24px;
+  }
+  label{
+    display:block;
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+    margin-bottom:8px;
+  }
+  input[type="password"]{
+    width:100%;
+    background:var(--glass-strong);
+    border:1px solid var(--glass-border);
+    border-radius:10px;
+    padding:11px 13px;
+    font-size:14px;
+    color:var(--ink);
+    font-family:inherit;
+    margin-bottom:16px;
+  }
+  input[type="password"]:focus{ outline:none; border-color:var(--periwinkle); }
+  button{
+    width:100%;
+    font-family:'JetBrains Mono',monospace;
+    font-size:12.5px;
+    letter-spacing:0.02em;
+    color:var(--navy);
+    background:var(--ink);
+    border:none;
+    border-radius:10px;
+    padding:12px 0;
+    cursor:pointer;
+    transition:opacity .15s ease;
+  }
+  button:hover{ opacity:0.88; }
+  button:disabled{ opacity:0.5; cursor:default; }
+  .error{
+    font-size:12.5px;
+    color:#ff8b8b;
+    margin:-6px 0 14px;
+    min-height:16px;
+  }
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Command Deck</h1>
+  <p class="sub">Enter the password to unlock the dashboard.</p>
+  <form id="loginForm">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" autocomplete="current-password" autofocus>
+    <div class="error" id="errorMsg"></div>
+    <button type="submit" id="submitBtn">Unlock</button>
+  </form>
+</div>
+
+<script>
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const errorEl = document.getElementById('errorMsg');
+    const password = document.getElementById('password').value;
+    errorEl.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Checking…';
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        errorEl.textContent = result.error || 'Incorrect password';
+        btn.disabled = false;
+        btn.textContent = 'Unlock';
+        return;
+      }
+      const params = new URLSearchParams(window.location.search);
+      window.location.href = params.get('next') || '/';
+    } catch (err) {
+      errorEl.textContent = 'Something went wrong — try again.';
+      btn.disabled = false;
+      btn.textContent = 'Unlock';
+    }
+  });
+</script>
+
+</body>
+</html>

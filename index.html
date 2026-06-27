@@ -135,6 +135,35 @@
     color:var(--ink-faint);
   }
 
+  /* ---------- Daily digest banner ---------- */
+  .digest-banner{
+    position:relative;
+    z-index:1;
+    margin-top:28px;
+    padding:18px 22px;
+    background:var(--glass);
+    border:1px solid var(--glass-border);
+    border-radius:var(--radius);
+    backdrop-filter:blur(18px) saturate(1.1);
+    display:flex;
+    align-items:flex-start;
+    gap:14px;
+  }
+  .digest-banner .digest-label{
+    flex-shrink:0;
+    font-family:'JetBrains Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    padding-top:3px;
+  }
+  .digest-banner .digest-text{
+    font-size:14px;
+    line-height:1.6;
+    color:var(--ink);
+  }
+
   /* ---------- Grid (GridStack-powered, draggable/resizable) ---------- */
   .grid-stack{
     margin-top:40px;
@@ -515,6 +544,15 @@
   @media (prefers-reduced-motion: reduce){
     .card{ animation:none; opacity:1; transform:none; }
   }
+
+  /* ---------- Mobile ---------- */
+  @media (max-width: 700px){
+    .wrap{ padding:28px 14px 60px; }
+    .greeting h1{ font-size:26px; }
+    .clockbox{ display:none; }
+    .grid-stack-item-content{ padding:0; }
+    .card{ padding:18px 16px; }
+  }
 </style>
 </head>
 <body>
@@ -539,6 +577,7 @@
         <a class="connect-btn" id="syncBtn" href="/api/sync-google" style="display:none">Sync now <span class="arrow">↻</span></a>
         <a class="connect-btn" id="resetLayoutBtn" href="#">Reset layout</a>
         <a class="connect-btn" id="editLayoutBtn" href="#">Edit layout</a>
+        <a class="connect-btn" id="lockBtn" href="#">Lock dashboard</a>
       </div>
     </div>
     <div class="clockbox">
@@ -546,6 +585,11 @@
       <div class="date" id="clockDate">—</div>
     </div>
   </header>
+
+  <div class="digest-banner" id="digestBanner" style="display:none">
+    <div class="digest-label">Today</div>
+    <div class="digest-text" id="digestText"></div>
+  </div>
 
   <div class="grid-stack">
 
@@ -618,6 +662,7 @@
   const GRID_LAYOUT_KEY = 'commandDeckLayout_v1';
   const grid = GridStack.init({
     column: 12,
+    columnOpts: { breakpoints: [{ w: 768, c: 1 }], breakpointForWindow: true },
     cellHeight: 60,
     margin: 10,
     float: true,
@@ -652,6 +697,16 @@
     } catch (err) {
       console.error('Could not save widget layout', err);
     }
+  });
+
+  document.getElementById('lockBtn').addEventListener('click', async (e) => {
+    e.preventDefault();
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('logout failed', err);
+    }
+    window.location.href = '/login.html';
   });
 
   document.getElementById('resetLayoutBtn').addEventListener('click', (e) => {
@@ -1117,7 +1172,20 @@
     }
   });
 
+  async function loadDailyDigest(){
+    try {
+      const res = await fetch('/api/daily-digest', { cache: 'no-store' });
+      const result = await res.json();
+      if (!res.ok || result.error || !result.digest) return;
+      document.getElementById('digestText').textContent = result.digest;
+      document.getElementById('digestBanner').style.display = '';
+    } catch (err) {
+      console.error('daily digest failed', err);
+    }
+  }
+
   loadDashboardData();
+  loadDailyDigest();
 
   // ---------- AI auto-detect to-dos on open ----------
   // Every time the dashboard is actually opened/reloaded, ask Claude to scan
@@ -1276,7 +1344,7 @@
     drawDots();
     drawMouseGlow();
     t += 0.00045;
-    if(!reduceMotion) requestAnimationFrame(step);
+    if(!reduceMotion && !window.matchMedia('(max-width: 700px)').matches) requestAnimationFrame(step);
   }
   step();
 
