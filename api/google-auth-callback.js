@@ -2,6 +2,7 @@
 // Exchanges the auth code for tokens and saves them server-side in Supabase.
 // This is the ONLY place the refresh token gets written — the frontend never sees it.
 const { createClient } = require('@supabase/supabase-js');
+const { syncGoogleData } = require('./_googleSync');
 
 module.exports = async (req, res) => {
   const code = req.query.code;
@@ -47,8 +48,24 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // Pull the first batch of Gmail/Drive data right away so the dashboard has
+  // something real to show as soon as you go back to it — no separate manual
+  // sync step needed after the very first connect.
+  let syncSummary = 'Sync will run shortly.';
+  try {
+    const result = await syncGoogleData();
+    syncSummary = `Synced ${result.emails} email(s) and ${result.driveFiles} Drive file(s).`;
+    if (result.errors && result.errors.length) {
+      syncSummary += ` (${result.errors.join(' ')})`;
+    }
+  } catch (err) {
+    syncSummary = `Token saved, but the first sync failed: ${err.message}. You can retry from the dashboard.`;
+  }
+
   res.setHeader('Content-Type', 'text/html');
-  res.status(200).send(`<html><body style="background:#020203;color:#f0f2f6;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-    <p>Google connected — Gmail &amp; Drive access saved. You can close this tab.</p>
+  res.status(200).send(`<html><body style="background:#020203;color:#f0f2f6;font-family:sans-serif;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:0 24px">
+    <p>Google connected — Gmail &amp; Drive access saved.</p>
+    <p style="color:#9aa3b2;font-size:14px">${syncSummary}</p>
+    <p>You can close this tab and go back to the dashboard.</p>
   </body></html>`);
 };

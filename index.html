@@ -323,8 +323,9 @@
     <div class="greeting">
       <h1 id="greetText">Good morning, Carter</h1>
       <div class="header-row">
-        <span class="pill"><span class="dot"></span>Demo data — Gmail, Drive &amp; Apple Calendar wiring up next</span>
-        <a class="connect-btn" href="/api/google-auth-start">Connect Google <span class="arrow">→</span></a>
+        <span class="pill" id="statusPill"><span class="dot"></span>Checking Google connection…</span>
+        <a class="connect-btn" id="connectBtn" href="/api/google-auth-start">Connect Google <span class="arrow">→</span></a>
+        <a class="connect-btn" id="syncBtn" href="/api/sync-google" style="display:none">Sync now <span class="arrow">↻</span></a>
       </div>
     </div>
     <div class="clockbox">
@@ -336,81 +337,14 @@
   <div class="grid">
 
     <section class="card inbox">
-      <h2>Inbox <span class="count">5 new</span></h2>
-
-      <div class="mail-item">
-        <div class="mail-dot"></div>
-        <div class="mail-body">
-          <div class="mail-row-top">
-            <div>
-              <div class="mail-from">Aine Kim</div>
-              <div class="mail-subject">Re: Conclusion draft</div>
-            </div>
-            <div class="mail-time">2h</div>
-          </div>
-          <div class="mail-snippet">Sent edits on the limitations paragraph — can you take a look before Thursday?</div>
-        </div>
-      </div>
-
-      <div class="mail-item">
-        <div class="mail-dot"></div>
-        <div class="mail-body">
-          <div class="mail-row-top">
-            <div>
-              <div class="mail-from">Benjamin Zheng</div>
-              <div class="mail-subject">H4 stats — final numbers</div>
-            </div>
-            <div class="mail-time">5h</div>
-          </div>
-          <div class="mail-snippet">Confirming the corrected power value for the writeup.</div>
-        </div>
-      </div>
-
-      <div class="mail-item read">
-        <div class="mail-dot"></div>
-        <div class="mail-body">
-          <div class="mail-row-top">
-            <div>
-              <div class="mail-from">Eye Associates of Lexington</div>
-              <div class="mail-subject">Weave sync notice</div>
-            </div>
-            <div class="mail-time">Yesterday</div>
-          </div>
-          <div class="mail-snippet">Schedule pulled successfully for both providers.</div>
-        </div>
-      </div>
-
-      <div class="mail-item read">
-        <div class="mail-dot"></div>
-        <div class="mail-body">
-          <div class="mail-row-top">
-            <div>
-              <div class="mail-from">Muscogee Lodge #116</div>
-              <div class="mail-subject">AIA flyer feedback</div>
-            </div>
-            <div class="mail-time">Yesterday</div>
-          </div>
-          <div class="mail-snippet">A couple of tweaks on the Instagram copy.</div>
-        </div>
-      </div>
-
-      <div class="mail-item read">
-        <div class="mail-dot"></div>
-        <div class="mail-body">
-          <div class="mail-row-top">
-            <div>
-              <div class="mail-from">Journal Submissions Portal</div>
-              <div class="mail-subject">Manuscript reminder</div>
-            </div>
-            <div class="mail-time">2d</div>
-          </div>
-          <div class="mail-snippet">Complete your submission within 7 days.</div>
-        </div>
+      <h2>Inbox <span class="count" id="inboxCount">—</span></h2>
+      <div id="inboxList">
+        <div class="mail-item read"><div class="mail-body"><div class="mail-snippet">Loading…</div></div></div>
       </div>
     </section>
 
     <section class="card todos">
-      <h2>To-dos <span class="count">auto-extracted</span></h2>
+      <h2>To-dos <span class="count">demo data</span></h2>
 
       <div class="todo-item">
         <div class="todo-check"></div>
@@ -448,32 +382,18 @@
     <section class="card fact">
       <h2>Fun fact</h2>
       <div class="fact-text">Octopuses have three hearts. Two pump blood to the gills, and the third pumps it to the rest of the body — but that third heart actually stops when the octopus swims, which is part of why they'd rather crawl.</div>
-      <div class="fact-tag">refreshes daily</div>
+      <div class="fact-tag">demo · refreshes daily once wired</div>
     </section>
 
     <section class="card drive">
       <h2>Recent docs <span class="count">Drive</span></h2>
-
-      <div class="doc-item">
-        <div class="doc-name">Vaccine Hesitancy — Final Report.docx</div>
-        <div class="doc-meta">3h · Aine Kim</div>
-      </div>
-      <div class="doc-item">
-        <div class="doc-name">Vaccine Hesitancy — Working Doc.docx</div>
-        <div class="doc-meta">Yesterday · you</div>
-      </div>
-      <div class="doc-item">
-        <div class="doc-name">Summer Fellowship 2026 — Flyer copy.docx</div>
-        <div class="doc-meta">2d · you</div>
-      </div>
-      <div class="doc-item">
-        <div class="doc-name">S.897 References — APA formatting.docx</div>
-        <div class="doc-meta">3d · you</div>
+      <div id="driveList">
+        <div class="doc-item"><div class="doc-name">Loading…</div></div>
       </div>
     </section>
 
     <section class="card cal">
-      <h2>Up next <span class="count">Apple Calendar</span></h2>
+      <h2>Up next <span class="count">Apple Calendar — demo</span></h2>
 
       <div class="ev-item">
         <div class="ev-time">2:00p</div>
@@ -508,6 +428,114 @@
   }
   paintClock();
   setInterval(paintClock, 1000);
+
+  // ---------- Real Gmail / Drive data ----------
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
+
+  function relativeTime(iso){
+    if (!iso) return '';
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 1) return 'now';
+    if (mins < 60) return mins + 'm';
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return hours + 'h';
+    const days = Math.round(hours / 24);
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return days + 'd';
+    return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  function renderInbox(emails){
+    const list = document.getElementById('inboxList');
+    const countEl = document.getElementById('inboxCount');
+    if (!emails.length){
+      list.innerHTML = '<div class="mail-item read"><div class="mail-body"><div class="mail-snippet">No synced emails yet — connect Google, then check back.</div></div></div>';
+      countEl.textContent = '0 new';
+      return;
+    }
+    const unread = emails.filter(e => e.is_unread).length;
+    countEl.textContent = unread + ' new';
+    list.innerHTML = emails.map(e => `
+      <div class="mail-item${e.is_unread ? '' : ' read'}">
+        <div class="mail-dot"></div>
+        <div class="mail-body">
+          <div class="mail-row-top">
+            <div>
+              <div class="mail-from">${escapeHtml(e.from_name || e.from_email || 'Unknown sender')}</div>
+              <div class="mail-subject">${escapeHtml(e.subject || '(no subject)')}</div>
+            </div>
+            <div class="mail-time">${relativeTime(e.received_at)}</div>
+          </div>
+          <div class="mail-snippet">${escapeHtml(e.snippet || '')}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderDrive(files){
+    const list = document.getElementById('driveList');
+    if (!files.length){
+      list.innerHTML = '<div class="doc-item"><div class="doc-name">No synced Drive files yet — connect Google, then check back.</div></div>';
+      return;
+    }
+    list.innerHTML = files.map(f => `
+      <div class="doc-item">
+        <a class="doc-name" href="${escapeHtml(f.link || '#')}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${escapeHtml(f.name)}</a>
+        <div class="doc-meta">${relativeTime(f.modified_time)} · ${escapeHtml(f.owner_name || 'you')}</div>
+      </div>
+    `).join('');
+  }
+
+  function setStatus(connected){
+    const pill = document.getElementById('statusPill');
+    const connectBtn = document.getElementById('connectBtn');
+    const syncBtn = document.getElementById('syncBtn');
+    if (connected){
+      pill.innerHTML = '<span class="dot"></span>Gmail &amp; Drive connected';
+      connectBtn.textContent = 'Reconnect Google';
+      connectBtn.innerHTML = 'Reconnect Google <span class="arrow">→</span>';
+      syncBtn.style.display = '';
+    } else {
+      pill.innerHTML = '<span class="dot"></span>Google not connected — Gmail &amp; Drive showing empty';
+      syncBtn.style.display = 'none';
+    }
+  }
+
+  async function loadDashboardData(){
+    try {
+      const res = await fetch('/api/dashboard-data', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Request failed: ' + res.status);
+      const data = await res.json();
+      setStatus(data.googleConnected);
+      renderInbox(data.emails || []);
+      renderDrive(data.driveFiles || []);
+    } catch (err) {
+      const pill = document.getElementById('statusPill');
+      pill.innerHTML = '<span class="dot"></span>Could not load dashboard data';
+      console.error('loadDashboardData failed', err);
+    }
+  }
+
+  document.getElementById('syncBtn').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const btn = e.currentTarget;
+    const original = btn.innerHTML;
+    btn.innerHTML = 'Syncing…';
+    try {
+      await fetch('/api/sync-google', { cache: 'no-store' });
+    } catch (err) {
+      console.error('sync-google failed', err);
+    }
+    await loadDashboardData();
+    btn.innerHTML = original;
+  });
+
+  loadDashboardData();
 
   // ---------- Flow-field topography + dense reactive dot grid ----------
   const canvas = document.getElementById('field');
