@@ -877,11 +877,12 @@
     }
   }
 
-  document.getElementById('syncBtn').addEventListener('click', async (e) => {
-    e.preventDefault();
-    const btn = e.currentTarget;
-    const original = btn.innerHTML;
-    btn.innerHTML = 'Syncing…';
+  let isSyncing = false;
+  let lastAutoSyncAt = Date.now();
+
+  async function runGoogleSync(){
+    if (isSyncing) return;
+    isSyncing = true;
     let syncErrors = [];
     try {
       const res = await fetch('/api/sync-google', { cache: 'no-store' });
@@ -895,7 +896,33 @@
     if (syncErrors.length){
       document.getElementById('statusPill').innerHTML = '<span class="dot"></span>' + escapeHtml(syncErrors.join(' '));
     }
+    isSyncing = false;
+    lastAutoSyncAt = Date.now();
+  }
+
+  document.getElementById('syncBtn').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const btn = e.currentTarget;
+    const original = btn.innerHTML;
+    btn.innerHTML = 'Syncing…';
+    await runGoogleSync();
     btn.innerHTML = original;
+  });
+
+  // ---------- Auto-refresh while the dashboard tab is open ----------
+  // Re-syncs Gmail/Drive/Calendar every few minutes, but only while the tab
+  // is actually visible — no point burning API calls on a background tab.
+  // Also catches up immediately if you switch back after being away a while.
+  const AUTO_SYNC_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+
+  setInterval(() => {
+    if (document.visibilityState === 'visible') runGoogleSync();
+  }, AUTO_SYNC_INTERVAL_MS);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - lastAutoSyncAt > 60 * 1000){
+      runGoogleSync();
+    }
   });
 
   loadDashboardData();
