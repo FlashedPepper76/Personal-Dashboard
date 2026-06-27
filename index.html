@@ -393,6 +393,86 @@
   .email-modal .email-modal-meta{ font-size:12px; color:var(--ink-faint); margin-bottom:16px; line-height:1.6; }
   .email-modal .email-modal-body{ font-size:13.5px; color:var(--cyan); line-height:1.6; white-space:pre-wrap; word-break:break-word; }
   .email-modal .email-modal-body iframe{ width:100%; min-height:300px; border:none; background:#fff; border-radius:8px; }
+  .email-modal-expand{
+    float:right;
+    cursor:pointer;
+    color:var(--ink-faint);
+    font-size:13px;
+    font-family:'JetBrains Mono',monospace;
+    border:1px solid var(--glass-border);
+    border-radius:6px;
+    padding:4px 9px;
+    margin-right:8px;
+  }
+  .email-modal-expand:hover{ color:var(--ink); border-color:var(--periwinkle); }
+  .email-modal-todo-btn{
+    float:right;
+    cursor:pointer;
+    color:var(--navy);
+    background:var(--cyan);
+    font-size:13px;
+    font-family:'JetBrains Mono',monospace;
+    border:1px solid var(--cyan);
+    border-radius:6px;
+    padding:4px 9px;
+    margin-right:8px;
+  }
+  .email-modal-todo-btn:hover{ filter:brightness(1.08); }
+  .email-modal-todo-btn:disabled{ opacity:0.6; cursor:default; filter:none; }
+  /* Full-screen mode: the backdrop's padding goes to zero and the modal
+     itself fills the viewport instead of being capped at 640px/80vh. */
+  .email-modal-backdrop.is-fullscreen{ padding:0; }
+  .email-modal-backdrop.is-fullscreen .email-modal{
+    width:100vw;
+    height:100vh;
+    max-width:100vw;
+    max-height:100vh;
+    border-radius:0;
+    display:flex;
+    flex-direction:column;
+  }
+  .email-modal-backdrop.is-fullscreen .email-modal-body{ flex:1; }
+  .email-modal-backdrop.is-fullscreen .email-modal-body iframe{ height:100%; min-height:0; }
+
+  /* ---------- Inbox: send-to-todo row action ---------- */
+  .mail-todo-btn{
+    flex-shrink:0;
+    align-self:flex-start;
+    margin-top:2px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    color:var(--ink-faint);
+    background:var(--glass);
+    border:1px solid var(--glass-border);
+    border-radius:6px;
+    padding:3px 7px;
+    opacity:0;
+    transition:opacity .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .mail-item:hover .mail-todo-btn{ opacity:1; }
+  .mail-todo-btn:hover{ color:var(--ink); border-color:var(--periwinkle); }
+  .mail-todo-btn:disabled{ opacity:1; cursor:default; }
+
+  /* ---------- Todos: source link + clear-completed ---------- */
+  .todo-source-link{
+    cursor:pointer;
+    color:var(--periwinkle);
+    text-decoration:underline;
+    text-decoration-color:rgba(199,210,255,0.35);
+  }
+  .todo-source-link:hover{ color:var(--ink); }
+  .todo-clear-btn{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10.5px;
+    color:var(--ink-faint);
+    background:none;
+    border:none;
+    cursor:pointer;
+    padding:0;
+    text-decoration:underline;
+    text-decoration-color:rgba(199,210,255,0.25);
+  }
+  .todo-clear-btn:hover{ color:var(--ink); }
 
   /* ---------- Calendar ---------- */
   .ev-item{
@@ -483,7 +563,7 @@
     <div class="grid-stack-item" gs-id="todos" gs-x="5" gs-y="0" gs-w="4" gs-h="6">
       <div class="grid-stack-item-content">
         <section class="card todos">
-          <h2>To-dos <span class="count" id="todoCount">—</span></h2>
+          <h2>To-dos <span style="display:flex; align-items:center; gap:8px;"><span class="count" id="todoCount">—</span><button type="button" id="todoClearCompletedBtn" class="todo-clear-btn">Clear done</button></span></h2>
           <div id="todoList" class="card-scroll">
             <div class="todo-item"><div class="todo-text">Loading…</div></div>
           </div>
@@ -633,6 +713,7 @@
               <div class="mail-subject">${escapeHtml(e.subject || '(no subject)')}</div>
             </div>
             <div class="mail-time">${relativeTime(e.received_at)}</div>
+            <button type="button" class="mail-todo-btn" data-gmail-id="${escapeHtml(e.gmail_id)}">→ To-do</button>
             <button type="button" class="mail-archive-btn" data-gmail-id="${escapeHtml(e.gmail_id)}">Archive</button>
           </div>
           <div class="mail-snippet">${escapeHtml(e.snippet || '')}</div>
@@ -645,9 +726,15 @@
   // the item) and "archive" (click the button) without them conflicting.
   document.getElementById('inboxList').addEventListener('click', (e) => {
     const archiveBtn = e.target.closest('.mail-archive-btn');
+    const todoBtn = e.target.closest('.mail-todo-btn');
     if (archiveBtn){
       e.stopPropagation();
       archiveEmail(archiveBtn.dataset.gmailId, archiveBtn.closest('.mail-item'));
+      return;
+    }
+    if (todoBtn){
+      e.stopPropagation();
+      sendEmailToTodo(todoBtn.dataset.gmailId, todoBtn);
       return;
     }
     const item = e.target.closest('.mail-item');
@@ -673,6 +760,44 @@
 
   function closeEmailModal(){
     document.getElementById('emailModalRoot').innerHTML = '';
+    document.removeEventListener('keydown', emailModalEscHandler);
+  }
+
+  function emailModalEscHandler(e){
+    if (e.key === 'Escape') closeEmailModal();
+  }
+
+  function toggleEmailFullscreen(){
+    const backdrop = document.getElementById('emailModalBackdrop');
+    const btn = document.getElementById('emailModalExpandBtn');
+    if (!backdrop) return;
+    const nowFullscreen = backdrop.classList.toggle('is-fullscreen');
+    if (btn) btn.textContent = nowFullscreen ? '⤓ Exit full screen' : '⤢ Full screen';
+  }
+
+  // Shared by the modal's "Send to To-do" button and the inbox row's
+  // "→ To-do" button — asks Claude to condense the email into one short
+  // to-do line and refreshes the to-do list once it's saved.
+  async function sendEmailToTodo(gmailId, btnEl){
+    const original = btnEl.textContent;
+    btnEl.textContent = 'Adding…';
+    btnEl.disabled = true;
+    try {
+      const res = await fetch('/api/email-to-todo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gmailId })
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) throw new Error(result.error || 'Could not create to-do');
+      btnEl.textContent = '✓ Added';
+      await loadDashboardData();
+    } catch (err) {
+      btnEl.textContent = 'Failed';
+      document.getElementById('statusPill').innerHTML = '<span class="dot"></span>' + escapeHtml(err.message);
+    } finally {
+      setTimeout(() => { btnEl.textContent = original; btnEl.disabled = false; }, 1800);
+    }
   }
 
   async function openEmailModal(gmailId){
@@ -685,6 +810,7 @@
         </div>
       </div>
     `;
+    document.addEventListener('keydown', emailModalEscHandler);
     document.getElementById('emailModalBackdrop').addEventListener('click', (e) => {
       if (e.target.id === 'emailModalBackdrop') closeEmailModal();
     });
@@ -697,6 +823,8 @@
 
       root.querySelector('.email-modal').innerHTML = `
         <span class="email-modal-close" id="emailModalCloseBtn2">Close ✕</span>
+        <span class="email-modal-expand" id="emailModalExpandBtn">⤢ Full screen</span>
+        <button type="button" class="email-modal-todo-btn" id="emailModalTodoBtn">→ Send to To-do</button>
         <h3>${escapeHtml(msg.subject || '(no subject)')}</h3>
         <div class="email-modal-meta">
           From: ${escapeHtml(msg.from || 'Unknown')}<br>
@@ -706,6 +834,10 @@
         <div class="email-modal-body" id="emailModalBody"></div>
       `;
       document.getElementById('emailModalCloseBtn2').addEventListener('click', closeEmailModal);
+      document.getElementById('emailModalExpandBtn').addEventListener('click', toggleEmailFullscreen);
+      document.getElementById('emailModalTodoBtn').addEventListener('click', (e) => {
+        sendEmailToTodo(gmailId, e.currentTarget);
+      });
 
       const bodyEl = document.getElementById('emailModalBody');
       if (msg.bodyHtml){
@@ -799,6 +931,14 @@
     `).join('');
   }
 
+  function sourceLabel(t){
+    if (t.source_type === 'email' && t.source_ref){
+      return `<span class="todo-source-link" data-gmail-id="${escapeHtml(t.source_ref)}">from email →</span>`;
+    }
+    if (t.source_type === 'auto') return 'auto-suggested';
+    return 'added by you';
+  }
+
   function renderTodos(todos){
     const list = document.getElementById('todoList');
     const countEl = document.getElementById('todoCount');
@@ -813,7 +953,7 @@
         <div class="todo-check${t.completed ? ' checked' : ''}" data-id="${escapeHtml(t.id)}"></div>
         <div style="flex:1">
           <div class="todo-text">${escapeHtml(t.text)}</div>
-          <div class="todo-meta">${t.due_label ? 'due <b>' + escapeHtml(t.due_label) + '</b> · ' : ''}${t.source_type === 'auto' ? 'auto-suggested' : 'added by you'}</div>
+          <div class="todo-meta">${t.due_label ? 'due <b>' + escapeHtml(t.due_label) + '</b> · ' : ''}${sourceLabel(t)}</div>
         </div>
         <button type="button" class="todo-dismiss-btn" data-id="${escapeHtml(t.id)}">✕</button>
       </div>
@@ -823,11 +963,27 @@
   document.getElementById('todoList').addEventListener('click', (e) => {
     const check = e.target.closest('.todo-check');
     const dismissBtn = e.target.closest('.todo-dismiss-btn');
+    const sourceLink = e.target.closest('.todo-source-link');
     if (check){
       toggleTodo(check.dataset.id, !check.classList.contains('checked'));
     } else if (dismissBtn){
       dismissTodo(dismissBtn.dataset.id);
+    } else if (sourceLink){
+      openEmailModal(sourceLink.dataset.gmailId);
     }
+  });
+
+  document.getElementById('todoClearCompletedBtn').addEventListener('click', async () => {
+    const completedItems = Array.from(document.querySelectorAll('.todo-item.completed'));
+    if (!completedItems.length) return;
+    const ids = completedItems.map(el => el.dataset.id);
+    completedItems.forEach(el => el.remove());
+    try {
+      await Promise.all(ids.map(id => fetch('/api/todos?id=' + encodeURIComponent(id), { method: 'DELETE' })));
+    } catch (err) {
+      console.error('clear completed failed', err);
+    }
+    await loadDashboardData();
   });
 
   async function toggleTodo(id, completed){
