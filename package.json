@@ -9,6 +9,7 @@
     "@supabase/supabase-js": "^2.45.0",
     "googleapis": "^140.0.0",
     "tsdav": "^2.0.6",
-    "@google/genai": "^2.10.0"
+    "@google/genai": "^2.10.0",
+    "@vercel/functions": "^3.7.4"
   }
 }

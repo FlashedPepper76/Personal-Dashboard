@@ -10,7 +10,14 @@
 // Page requests without a valid session get redirected to /login.html.
 // API requests without a valid session get a 401 JSON response instead
 // (a redirect would just break the fetch() call on the frontend).
+//
+// IMPORTANT: "let this request through unmodified" is NOT `return;` /
+// `return undefined;` — that gets treated as "respond with an empty 200",
+// not "continue to the underlying static file or function" (this bit us
+// once already: white screen on every page, empty bodies on every allowed
+// request). The actual pass-through call is next() from @vercel/functions.
 import crypto from 'node:crypto';
+import { next } from '@vercel/functions';
 
 export const config = {
   runtime: 'nodejs'
@@ -53,9 +60,9 @@ function isCronRequest(request) {
 export default function middleware(request) {
   const path = new URL(request.url).pathname;
 
-  if (PUBLIC_PATHS.has(path)) return;
-  if (path === '/api/extract-todos' && isCronRequest(request)) return;
-  if (hasValidSession(request)) return;
+  if (PUBLIC_PATHS.has(path)) return next();
+  if (path === '/api/extract-todos' && isCronRequest(request)) return next();
+  if (hasValidSession(request)) return next();
 
   if (path.startsWith('/api/')) {
     return new Response(JSON.stringify({ error: 'Not authenticated' }), {
