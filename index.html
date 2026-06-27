@@ -526,12 +526,19 @@
     const btn = e.currentTarget;
     const original = btn.innerHTML;
     btn.innerHTML = 'Syncing…';
+    let syncErrors = [];
     try {
-      await fetch('/api/sync-google', { cache: 'no-store' });
+      const res = await fetch('/api/sync-google', { cache: 'no-store' });
+      const result = await res.json();
+      if (result.errors && result.errors.length) syncErrors = result.errors;
     } catch (err) {
+      syncErrors = [err.message];
       console.error('sync-google failed', err);
     }
     await loadDashboardData();
+    if (syncErrors.length){
+      document.getElementById('statusPill').innerHTML = '<span class="dot"></span>' + escapeHtml(syncErrors.join(' '));
+    }
     btn.innerHTML = original;
   });
 
