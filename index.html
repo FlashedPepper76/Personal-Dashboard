@@ -538,15 +538,28 @@
   }
   .weather-desc{ font-size:13px; color:var(--ink-dim); margin-top:12px; line-height:1.4; }
   .weather-meta{ font-size:10.5px; color:var(--ink-faint); margin-top:10px; font-family:'JetBrains Mono',monospace; }
-  .radar-wrap{ flex:1; min-height:0; display:flex; flex-direction:column; margin-top:14px; }
+  .radar-wrap{
+    flex:1;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    margin-top:14px;
+    overflow:hidden;
+    border-radius:12px;
+    border:1px solid var(--glass-border);
+  }
   .radar-img{
     width:100%;
     flex:1;
     min-height:0;
     object-fit:cover;
-    border-radius:12px;
-    border:1px solid var(--glass-border);
     background:#000;
+    /* KCAE's actual radar site sits at the edge of Lexington County (it's
+       Columbia Metro Airport), so the county is already near the center of
+       the frame — scaling crops in toward roughly that area. This is a CSS
+       crop on a fixed-area image, not a re-rendered/re-centered map (NWS's
+       simple embeddable GIF has no bounding-box option), so it's approximate. */
+    transform: scale(2.6);
     /* The NWS source GIF has a white basemap with colored precip overlays.
        invert() flips that to black, and hue-rotate(180deg) afterward
        approximately un-does the hue shift invert() causes on the colored
@@ -628,6 +641,7 @@
         <a class="connect-btn" id="resetLayoutBtn" href="#">Reset layout</a>
         <a class="connect-btn" id="editLayoutBtn" href="#">Edit layout</a>
         <a class="connect-btn" id="pushBtn" href="#">Enable phone alerts</a>
+        <a class="connect-btn" id="pushTestBtn" href="#">Test alert</a>
         <a class="connect-btn" id="lockBtn" href="#">Lock dashboard</a>
       </div>
     </div>
@@ -1398,6 +1412,29 @@
   });
 
   refreshPushButton();
+
+  document.getElementById('pushTestBtn').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const btn = e.currentTarget;
+    const original = btn.textContent;
+    btn.textContent = 'Sending…';
+    try {
+      const res = await fetch('/api/dashboard-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'test-push' })
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) throw new Error(result.error || 'Test push failed');
+      btn.textContent = result.sent ? `Sent (${result.sent})` : 'No devices subscribed';
+    } catch (err) {
+      console.error('test push failed', err);
+      btn.textContent = 'Failed';
+      alert('Test alert failed: ' + err.message);
+    } finally {
+      setTimeout(() => { btn.textContent = original; }, 3000);
+    }
+  });
 
   // ---------- AI auto-detect to-dos on open ----------
   // Every time the dashboard is actually opened/reloaded, ask Claude to scan

@@ -10,6 +10,7 @@
 // Vercel's per-deployment serverless function cap (Hobby plan: 12).
 const { createClient } = require('@supabase/supabase-js');
 const { GoogleGenAI } = require('@google/genai');
+const webpush = require('web-push');
 
 function todayDateString() {
   const fmt = new Intl.DateTimeFormat('en-US', {
@@ -215,6 +216,52 @@ Respond with ONLY JSON, no prose, no markdown fences:
   }
 }
 
+// POST { action: 'test-push' } handler — sends a one-off notification to
+// every subscribed device. Same send pattern as sendUrgentPushNotifications
+// in extract-todos.js, just triggered manually instead of by Gemini.
+async function handleTestPush(req, res, supabase) {
+  if (!process.env.WEB_PUSH_PUBLIC_KEY || !process.env.WEB_PUSH_PRIVATE_KEY) {
+    res.status(400).json({ error: "Web Push isn't configured — missing WEB_PUSH_PUBLIC_KEY / WEB_PUSH_PRIVATE_KEY in Vercel env vars." });
+    return;
+  }
+
+  const { data: subs, error: subsErr } = await supabase.from('push_subscriptions').select('*');
+  if (subsErr) {
+    res.status(500).json({ error: subsErr.message });
+    return;
+  }
+  if (!subs || !subs.length) {
+    res.status(400).json({ error: 'No device is subscribed yet — click "Enable phone alerts" first.' });
+    return;
+  }
+
+  webpush.setVapidDetails(
+    process.env.WEB_PUSH_CONTACT || 'mailto:command-deck@localhost',
+    process.env.WEB_PUSH_PUBLIC_KEY,
+    process.env.WEB_PUSH_PRIVATE_KEY
+  );
+  const payload = JSON.stringify({ title: 'Test alert', body: 'Push notifications are working.' });
+
+  let sent = 0;
+  let failed = 0;
+  await Promise.all(subs.map(async (sub) => {
+    const pushSubscription = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
+    try {
+      await webpush.sendNotification(pushSubscription, payload);
+      sent++;
+    } catch (err) {
+      failed++;
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+      } else {
+        console.error('[dashboard-data] test push failed:', err.message);
+      }
+    }
+  }));
+
+  res.status(200).json({ ok: true, sent, failed });
+}
+
 module.exports = async (req, res) => {
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -226,10 +273,19 @@ module.exports = async (req, res) => {
   // ---------- Push subscription management ----------
   // POST { action: 'subscribe-push', subscription } — called once the
   // browser grants Notification permission and registers the service worker.
+  // POST { action: 'test-push' } — sends a one-off test notification to every
+  // subscribed device, so you can confirm the pipeline works without waiting
+  // on Gemini to actually flag something urgent.
   if (req.method === 'POST') {
     const action = req.body && req.body.action;
+
+    if (action === 'test-push') {
+      await handleTestPush(req, res, supabase);
+      return;
+    }
+
     if (action !== 'subscribe-push') {
-      res.status(400).json({ error: "Unknown action (expected 'subscribe-push')" });
+      res.status(400).json({ error: "Unknown action (expected 'subscribe-push' or 'test-push')" });
       return;
     }
     const sub = req.body.subscription;
