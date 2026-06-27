@@ -1362,8 +1362,12 @@
 
   async function refreshPushButton(){
     const btn = document.getElementById('pushBtn');
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !window.isSecureContext){
-      btn.style.display = 'none';
+    // Important: don't hide the button when support is missing. On iPhone,
+    // PushManager simply doesn't exist unless the dashboard's been added to
+    // the Home Screen — hiding the button here would silently erase the only
+    // way to discover that, instead of explaining it. The click handler
+    // below shows the actual guidance; this just leaves the label as-is.
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)){
       return;
     }
     try {
