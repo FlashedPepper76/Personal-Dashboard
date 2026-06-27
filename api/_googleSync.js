@@ -19,7 +19,31 @@ function getHeader(headers, name) {
   return h ? h.value : null;
 }
 
-async function syncGoogleData() {
+// Collaborators whose Drive edits should always show up, even when they're
+// not the most-recently-modified-by-you file.
+const ALWAYS_INCLUDE_EDITORS = ['aine kim', 'benjamin zheng'];
+
+// Upserts `rows` (keyed by idColumn) and deletes any previously-cached rows
+// that are no longer part of this sync batch — so archived emails or files
+// that no longer match the current filter actually disappear, not just
+// never-get-added.
+async function replaceSyncedRows(supabase, table, idColumn, rows) {
+  if (rows.length) {
+    const ids = rows.map((r) => r[idColumn]);
+    const { error: delErr } = await supabase.from(table).delete().not(idColumn, 'in', `(${ids.join(',')})`);
+    if (delErr) throw delErr;
+    const { error: upErr } = await supabase.from(table).upsert(rows, { onConflict: idColumn });
+    if (upErr) throw upErr;
+  } else {
+    const { error: delErr } = await supabase.from(table).delete().not('id', 'is', null);
+    if (delErr) throw delErr;
+  }
+}
+
+// Loads the saved Google token, builds an authorized OAuth2 client, and wires
+// up auto-persisting any refreshed access token back to Supabase. Shared by
+// syncGoogleData and the archive/message-detail endpoints.
+async function getAuthorizedClient() {
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   const { data: tokenRow, error: tokenErr } = await supabase
@@ -29,9 +53,7 @@ async function syncGoogleData() {
     .maybeSingle();
 
   if (tokenErr) throw new Error(`Loading token failed: ${tokenErr.message}`);
-  if (!tokenRow) {
-    return { connected: false, emails: 0, driveFiles: 0, message: 'No Google token saved yet — connect Google first.' };
-  }
+  if (!tokenRow) return { supabase, oauth2Client: null };
 
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -44,7 +66,6 @@ async function syncGoogleData() {
     expiry_date: tokenRow.expires_at ? new Date(tokenRow.expires_at).getTime() : undefined
   });
 
-  // Persist any refreshed access token so we don't have to re-auth every time it expires.
   oauth2Client.on('tokens', async (tokens) => {
     const update = {};
     if (tokens.access_token) update.access_token = tokens.access_token;
@@ -55,14 +76,30 @@ async function syncGoogleData() {
     }
   });
 
+  return { supabase, oauth2Client };
+}
+
+async function syncGoogleData() {
+  const { supabase, oauth2Client } = await getAuthorizedClient();
+
+  if (!oauth2Client) {
+    return { connected: false, emails: 0, driveFiles: 0, message: 'No Google token saved yet — connect Google first.' };
+  }
+
   let emailCount = 0;
   let driveCount = 0;
   const errors = [];
 
   // ---------- Gmail ----------
+  // Only pull mail Gmail has flagged Important — that's the "important emails"
+  // signal Gmail already computes; INBOX means archived mail naturally drops out.
   try {
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    const list = await gmail.users.messages.list({ userId: 'me', maxResults: 10, labelIds: ['INBOX'] });
+    const list = await gmail.users.messages.list({
+      userId: 'me',
+      maxResults: 10,
+      labelIds: ['INBOX', 'IMPORTANT']
+    });
     const messages = list.data.messages || [];
 
     const emailRows = [];
@@ -87,40 +124,47 @@ async function syncGoogleData() {
       });
     }
 
-    if (emailRows.length) {
-      const { error } = await supabase.from('emails').upsert(emailRows, { onConflict: 'gmail_id' });
-      if (error) throw error;
-      emailCount = emailRows.length;
-    }
+    await replaceSyncedRows(supabase, 'emails', 'gmail_id', emailRows);
+    emailCount = emailRows.length;
   } catch (err) {
     errors.push(`Gmail sync failed: ${err.message}`);
   }
 
   // ---------- Drive ----------
+  // Pull a wider window ordered by recency, then keep only files you last
+  // edited yourself, OR files whose last edit came from a named collaborator
+  // (Aine Kim / Benjamin Zheng) even if someone else touched it more recently.
   try {
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     const list = await drive.files.list({
-      pageSize: 10,
+      pageSize: 30,
       orderBy: 'modifiedTime desc',
       q: 'trashed = false',
-      fields: 'files(id,name,modifiedTime,owners,webViewLink)'
+      fields: 'files(id,name,modifiedTime,owners,webViewLink,lastModifyingUser)'
     });
-    const files = list.data.files || [];
+    const candidates = list.data.files || [];
 
-    const driveRows = files.map((f) => ({
+    const filtered = candidates.filter((f) => {
+      const editor = f.lastModifyingUser;
+      if (!editor) return false;
+      if (editor.me) return true;
+      const displayName = (editor.displayName || '').trim().toLowerCase();
+      return ALWAYS_INCLUDE_EDITORS.includes(displayName);
+    }).slice(0, 10);
+
+    const driveRows = filtered.map((f) => ({
       file_id: f.id,
       name: f.name,
       modified_time: f.modifiedTime || null,
-      owner_name: f.owners && f.owners[0] ? f.owners[0].displayName : null,
+      owner_name: f.lastModifyingUser && f.lastModifyingUser.displayName
+        ? f.lastModifyingUser.displayName
+        : (f.owners && f.owners[0] ? f.owners[0].displayName : null),
       link: f.webViewLink || null,
       synced_at: new Date().toISOString()
     }));
 
-    if (driveRows.length) {
-      const { error } = await supabase.from('drive_files').upsert(driveRows, { onConflict: 'file_id' });
-      if (error) throw error;
-      driveCount = driveRows.length;
-    }
+    await replaceSyncedRows(supabase, 'drive_files', 'file_id', driveRows);
+    driveCount = driveRows.length;
   } catch (err) {
     errors.push(`Drive sync failed: ${err.message}`);
   }
@@ -128,4 +172,4 @@ async function syncGoogleData() {
   return { connected: true, emails: emailCount, driveFiles: driveCount, errors };
 }
 
-module.exports = { syncGoogleData };
+module.exports = { syncGoogleData, getAuthorizedClient };

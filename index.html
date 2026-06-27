@@ -235,6 +235,24 @@
   .mail-time{ margin-left:auto; flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-faint); padding-top:1px; }
   .mail-row-top{ display:flex; width:100%; }
   .mail-body{ width:100%; }
+  .mail-item{ cursor:pointer; position:relative; border-radius:10px; transition:background .15s ease; }
+  .mail-item:hover{ background:var(--glass); }
+  .mail-archive-btn{
+    flex-shrink:0;
+    align-self:flex-start;
+    margin-top:2px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    color:var(--ink-faint);
+    background:var(--glass);
+    border:1px solid var(--glass-border);
+    border-radius:6px;
+    padding:3px 7px;
+    opacity:0;
+    transition:opacity .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .mail-item:hover .mail-archive-btn{ opacity:1; }
+  .mail-archive-btn:hover{ color:var(--ink); border-color:var(--periwinkle); }
 
   /* ---------- Todos ---------- */
   .todo-item{
@@ -265,8 +283,43 @@
     border-top:1px solid var(--glass-border);
   }
   .doc-item:first-of-type{ border-top:none; padding-top:0; }
+  .doc-item{ text-decoration:none; transition:background .15s ease; border-radius:10px; }
+  .doc-item:hover{ background:var(--glass); }
   .doc-name{ font-size:13px; color:var(--ink); }
   .doc-meta{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-faint); white-space:nowrap; }
+
+  /* ---------- Email detail modal ---------- */
+  .email-modal-backdrop{
+    position:fixed; inset:0; z-index:50;
+    background:rgba(2,2,3,0.7);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px;
+  }
+  .email-modal{
+    width:min(640px, 100%);
+    max-height:80vh;
+    overflow-y:auto;
+    background:var(--navy);
+    border:1px solid var(--glass-border);
+    border-radius:var(--radius);
+    padding:24px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.5);
+  }
+  .email-modal-close{
+    float:right;
+    cursor:pointer;
+    color:var(--ink-faint);
+    font-size:13px;
+    font-family:'JetBrains Mono',monospace;
+    border:1px solid var(--glass-border);
+    border-radius:6px;
+    padding:4px 9px;
+  }
+  .email-modal-close:hover{ color:var(--ink); }
+  .email-modal h3{ font-size:16px; margin:0 0 4px; color:var(--ink); }
+  .email-modal .email-modal-meta{ font-size:12px; color:var(--ink-faint); margin-bottom:16px; line-height:1.6; }
+  .email-modal .email-modal-body{ font-size:13.5px; color:var(--cyan); line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+  .email-modal .email-modal-body iframe{ width:100%; min-height:300px; border:none; background:#fff; border-radius:8px; }
 
   /* ---------- Calendar ---------- */
   .ev-item{
@@ -416,6 +469,8 @@
   </div>
 </div>
 
+<div id="emailModalRoot"></div>
+
 <script>
   // ---------- Greeting + clock ----------
   function paintClock(){
@@ -454,14 +509,14 @@
     const list = document.getElementById('inboxList');
     const countEl = document.getElementById('inboxCount');
     if (!emails.length){
-      list.innerHTML = '<div class="mail-item read"><div class="mail-body"><div class="mail-snippet">No synced emails yet — connect Google, then check back.</div></div></div>';
+      list.innerHTML = '<div class="mail-item read"><div class="mail-body"><div class="mail-snippet">No important inbox emails synced yet.</div></div></div>';
       countEl.textContent = '0 new';
       return;
     }
     const unread = emails.filter(e => e.is_unread).length;
     countEl.textContent = unread + ' new';
     list.innerHTML = emails.map(e => `
-      <div class="mail-item${e.is_unread ? '' : ' read'}">
+      <div class="mail-item${e.is_unread ? '' : ' read'}" data-gmail-id="${escapeHtml(e.gmail_id)}">
         <div class="mail-dot"></div>
         <div class="mail-body">
           <div class="mail-row-top">
@@ -470,6 +525,7 @@
               <div class="mail-subject">${escapeHtml(e.subject || '(no subject)')}</div>
             </div>
             <div class="mail-time">${relativeTime(e.received_at)}</div>
+            <button type="button" class="mail-archive-btn" data-gmail-id="${escapeHtml(e.gmail_id)}">Archive</button>
           </div>
           <div class="mail-snippet">${escapeHtml(e.snippet || '')}</div>
         </div>
@@ -477,17 +533,96 @@
     `).join('');
   }
 
+  // Single delegated listener handles both "open detail" (click anywhere on
+  // the item) and "archive" (click the button) without them conflicting.
+  document.getElementById('inboxList').addEventListener('click', (e) => {
+    const archiveBtn = e.target.closest('.mail-archive-btn');
+    if (archiveBtn){
+      e.stopPropagation();
+      archiveEmail(archiveBtn.dataset.gmailId, archiveBtn.closest('.mail-item'));
+      return;
+    }
+    const item = e.target.closest('.mail-item');
+    if (item && item.dataset.gmailId) openEmailModal(item.dataset.gmailId);
+  });
+
+  async function archiveEmail(gmailId, itemEl){
+    if (itemEl) itemEl.style.opacity = '0.4';
+    try {
+      const res = await fetch('/api/gmail-archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gmailId })
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) throw new Error(result.error || 'Archive failed');
+      if (itemEl) itemEl.remove();
+    } catch (err) {
+      if (itemEl) itemEl.style.opacity = '1';
+      document.getElementById('statusPill').innerHTML = '<span class="dot"></span>' + escapeHtml(err.message);
+    }
+  }
+
+  function closeEmailModal(){
+    document.getElementById('emailModalRoot').innerHTML = '';
+  }
+
+  async function openEmailModal(gmailId){
+    const root = document.getElementById('emailModalRoot');
+    root.innerHTML = `
+      <div class="email-modal-backdrop" id="emailModalBackdrop">
+        <div class="email-modal">
+          <span class="email-modal-close" id="emailModalCloseBtn">Close ✕</span>
+          <h3>Loading…</h3>
+        </div>
+      </div>
+    `;
+    document.getElementById('emailModalBackdrop').addEventListener('click', (e) => {
+      if (e.target.id === 'emailModalBackdrop') closeEmailModal();
+    });
+    document.getElementById('emailModalCloseBtn').addEventListener('click', closeEmailModal);
+
+    try {
+      const res = await fetch('/api/gmail-message?id=' + encodeURIComponent(gmailId), { cache: 'no-store' });
+      const msg = await res.json();
+      if (!res.ok || msg.error) throw new Error(msg.error || 'Could not load email');
+
+      const bodyHtml = msg.bodyHtml
+        ? `<iframe sandbox="" srcdoc="${escapeHtml(msg.bodyHtml)}"></iframe>`
+        : `<div>${escapeHtml(msg.bodyText || msg.snippet || '(no readable body)')}</div>`;
+
+      root.querySelector('.email-modal').innerHTML = `
+        <span class="email-modal-close" id="emailModalCloseBtn2">Close ✕</span>
+        <h3>${escapeHtml(msg.subject || '(no subject)')}</h3>
+        <div class="email-modal-meta">
+          From: ${escapeHtml(msg.from || 'Unknown')}<br>
+          ${msg.to ? 'To: ' + escapeHtml(msg.to) + '<br>' : ''}
+          ${msg.date ? escapeHtml(msg.date) : ''}
+        </div>
+        <div class="email-modal-body">${bodyHtml}</div>
+      `;
+      document.getElementById('emailModalCloseBtn2').addEventListener('click', closeEmailModal);
+    } catch (err) {
+      root.querySelector('.email-modal').innerHTML = `
+        <span class="email-modal-close" id="emailModalCloseBtn3">Close ✕</span>
+        <h3>Couldn't load this email</h3>
+        <div class="email-modal-meta">${escapeHtml(err.message)}</div>
+      `;
+      document.getElementById('emailModalCloseBtn3').addEventListener('click', closeEmailModal);
+    }
+  }
+
   function renderDrive(files){
     const list = document.getElementById('driveList');
     if (!files.length){
-      list.innerHTML = '<div class="doc-item"><div class="doc-name">No synced Drive files yet — connect Google, then check back.</div></div>';
+      list.innerHTML = '<div class="doc-item"><div class="doc-name">No matching Drive files synced yet.</div></div>';
       return;
     }
     list.innerHTML = files.map(f => `
-      <div class="doc-item">
-        <a class="doc-name" href="${escapeHtml(f.link || '#')}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${escapeHtml(f.name)}</a>
+      <a class="doc-item" href="${escapeHtml(f.link || '#')}" target="_blank" rel="noopener">
+        <div class="doc-name">${escapeHtml(f.name)}</div>
         <div class="doc-meta">${relativeTime(f.modified_time)} · ${escapeHtml(f.owner_name || 'you')}</div>
-      </div>
+      </a>
     `).join('');
   }
 

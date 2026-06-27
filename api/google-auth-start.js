@@ -23,7 +23,7 @@ module.exports = async (req, res) => {
     access_type: "offline",   // required to get a refresh_token back
     prompt: "consent",        // forces refresh_token on every auth, not just the first
     scope: [
-      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.modify",
       "https://www.googleapis.com/auth/drive.metadata.readonly"
     ].join(" ")
   });
