@@ -89,6 +89,7 @@ async function syncGoogleData() {
   let emailCount = 0;
   let driveCount = 0;
   let calendarCount = 0;
+  let newCommentCount = 0;
   const errors = [];
 
   // ---------- Gmail ----------
@@ -166,6 +167,51 @@ async function syncGoogleData() {
 
     await replaceSyncedRows(supabase, 'drive_files', 'file_id', driveRows);
     driveCount = driveRows.length;
+
+    // ---------- Comments ----------
+    // Only watches the same tracked set above (your docs + Aine Kim / Benjamin
+    // Zheng edits). drive_comments has an ON DELETE CASCADE FK to drive_files,
+    // so a file dropping out of the tracked set above already cleans up its
+    // comment rows for free via replaceSyncedRows' delete step.
+    try {
+      const { data: existingComments } = await supabase
+        .from('drive_comments')
+        .select('file_id, comment_id');
+      const existingKeys = new Set((existingComments || []).map((c) => `${c.file_id}::${c.comment_id}`));
+
+      const newCommentRows = [];
+      for (const f of filtered) {
+        try {
+          const resp = await drive.comments.list({
+            fileId: f.id,
+            fields: 'comments(id,content,author,createdTime,resolved)'
+          });
+          const comments = (resp.data.comments || []).filter((c) => !c.resolved);
+          for (const c of comments) {
+            if (existingKeys.has(`${f.id}::${c.id}`)) continue;
+            newCommentRows.push({
+              file_id: f.id,
+              comment_id: c.id,
+              author_name: (c.author && c.author.displayName) || null,
+              content: c.content || null,
+              created_time: c.createdTime || null,
+              seen: false
+            });
+          }
+        } catch (err) {
+          // Comments API can fail per-file (e.g. file type doesn't support
+          // comments) — skip that file, don't kill the whole sync over it.
+        }
+      }
+
+      if (newCommentRows.length) {
+        const { error: commentErr } = await supabase.from('drive_comments').insert(newCommentRows);
+        if (commentErr) throw commentErr;
+      }
+      newCommentCount = newCommentRows.length;
+    } catch (err) {
+      errors.push(`Comment sync failed: ${err.message}`);
+    }
   } catch (err) {
     errors.push(`Drive sync failed: ${err.message}`);
   }
@@ -232,7 +278,7 @@ async function syncGoogleData() {
     errors.push(`Calendar sync failed: ${err.message}`);
   }
 
-  return { connected: true, emails: emailCount, driveFiles: driveCount, calendarEvents: calendarCount, errors };
+  return { connected: true, emails: emailCount, driveFiles: driveCount, calendarEvents: calendarCount, newComments: newCommentCount, errors };
 }
 
 module.exports = { syncGoogleData, getAuthorizedClient };

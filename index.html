@@ -349,6 +349,17 @@
   .doc-item:hover{ background:var(--glass); }
   .doc-name{ font-size:13px; color:var(--ink); }
   .doc-meta{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-faint); white-space:nowrap; }
+  .doc-comment-dot{
+    display:inline-block;
+    width:7px;
+    height:7px;
+    border-radius:50%;
+    background:var(--periwinkle);
+    box-shadow:0 0 6px rgba(223,235,255,0.75);
+    margin-right:7px;
+    vertical-align:middle;
+    flex:none;
+  }
 
   /* ---------- Email detail modal ---------- */
   .email-modal-backdrop{
@@ -718,19 +729,44 @@
     }
   }
 
-  function renderDrive(files){
+  function renderDrive(files, unseenComments){
     const list = document.getElementById('driveList');
     if (!files.length){
       list.innerHTML = '<div class="doc-item"><div class="doc-name">No matching Drive files synced yet.</div></div>';
       return;
     }
-    list.innerHTML = files.map(f => `
-      <a class="doc-item" href="${escapeHtml(f.link || '#')}" target="_blank" rel="noopener">
-        <div class="doc-name">${escapeHtml(f.name)}</div>
+    const byFile = new Map();
+    (unseenComments || []).forEach((c) => {
+      if (!byFile.has(c.file_id)) byFile.set(c.file_id, []);
+      byFile.get(c.file_id).push(c);
+    });
+    list.innerHTML = files.map(f => {
+      const comments = byFile.get(f.file_id) || [];
+      const dotTitle = comments.length
+        ? `${comments.length} new comment${comments.length > 1 ? 's' : ''} · latest from ${escapeHtml(comments[0].author_name || 'someone')}`
+        : '';
+      return `
+      <a class="doc-item" href="${escapeHtml(f.link || '#')}" target="_blank" rel="noopener" data-file-id="${escapeHtml(f.file_id)}">
+        <div class="doc-name">${comments.length ? `<span class="doc-comment-dot" title="${dotTitle}"></span>` : ''}${escapeHtml(f.name)}</div>
         <div class="doc-meta">${relativeTime(f.modified_time)} · ${escapeHtml(f.owner_name || 'you')}</div>
       </a>
-    `).join('');
+    `;
+    }).join('');
   }
+
+  // Clicking a doc you're about to go look at marks its comments seen —
+  // fire-and-forget, doesn't block the normal target="_blank" navigation.
+  document.getElementById('driveList').addEventListener('click', (e) => {
+    const item = e.target.closest('.doc-item');
+    if (!item || !item.dataset.fileId) return;
+    const dot = item.querySelector('.doc-comment-dot');
+    if (dot) dot.remove();
+    fetch('/api/drive-comments', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_id: item.dataset.fileId })
+    }).catch((err) => console.error('mark comments seen failed', err));
+  });
 
   function formatEventTime(iso, allDay){
     if (!iso) return '';
@@ -867,7 +903,7 @@
       const data = await res.json();
       setStatus(data.googleConnected);
       renderInbox(data.emails || []);
-      renderDrive(data.driveFiles || []);
+      renderDrive(data.driveFiles || [], data.unseenComments || []);
       renderTodos(data.todos || []);
       renderCalendar(data.calendarEvents || []);
     } catch (err) {
@@ -913,14 +949,14 @@
   // Re-syncs Gmail/Drive/Calendar every few minutes, but only while the tab
   // is actually visible — no point burning API calls on a background tab.
   // Also catches up immediately if you switch back after being away a while.
-  const AUTO_SYNC_INTERVAL_MS = 30 * 1000; // 30 seconds — nowhere near Google's per-user quotas for a single account
+  const AUTO_SYNC_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 
   setInterval(() => {
     if (document.visibilityState === 'visible') runGoogleSync();
   }, AUTO_SYNC_INTERVAL_MS);
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && Date.now() - lastAutoSyncAt > 20 * 1000){
+    if (document.visibilityState === 'visible' && Date.now() - lastAutoSyncAt > 60 * 1000){
       runGoogleSync();
     }
   });
