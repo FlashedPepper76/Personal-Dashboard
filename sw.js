@@ -10,7 +10,11 @@ self.addEventListener('push', (event) => {
   }
   const title = data.title || 'Command Deck';
   const body = data.body || '';
-  event.waitUntil(self.registration.showNotification(title, { body }));
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png'
+  }));
 });
 
 self.addEventListener('notificationclick', (event) => {
